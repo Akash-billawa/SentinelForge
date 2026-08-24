@@ -1,0 +1,41 @@
+{
+  "name": "soc-commander",
+  "description": "SentinelForge SOC Incident Commander - investigates alerts via MCP security tools and pauses for human approval before consequential actions.",
+  "model": { "name": "openai/gpt-4.1", "params": { "max_tokens": 8192 } },
+  "instructions_file": "../prompts/commander.md",
+  "mcp_servers": [
+    {
+      "name": "sentinelforge-security",
+      "url_env": "SENTINELFORGE_MCP_URL",
+      "enable_tools": [
+        "get_alert",
+        "list_scenarios_tool",
+        "search_windows_logs",
+        "get_process_tree",
+        "get_file_metadata",
+        "search_dns_logs",
+        "search_network_flows",
+        "lookup_ioc",
+        "list_attack_techniques",
+        "analyze_powershell",
+        "analyze_network_pattern",
+        "create_incident_session",
+        "get_incident_context",
+        "record_finding",
+        "mark_investigation_complete",
+        "correlate_evidence",
+        "calculate_risk_score",
+        "add_iocs_to_incident",
+        "request_response_authorization",
+        "isolate_endpoint",
+        "record_human_decision",
+        "finalize_incident_report",
+        "get_audit_timeline"
+      ],
+      "require_approval_for_tools": ["isolate_endpoint"]
+    }
+  ],
+  "config": {
+    "iteration_limit": 40
+  }
+}

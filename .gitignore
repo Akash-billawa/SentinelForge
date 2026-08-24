@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+
+# Secrets and local config
+.env
+.env.local
+*.pem
+*.key
+
+# Runtime state (incident stores, mock endpoint registry, audit logs, UI events)
+state/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/

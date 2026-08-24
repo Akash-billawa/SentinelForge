@@ -1,0 +1,48 @@
+{
+  "host": "WKS-042",
+  "root": {
+    "process_id": "proc_0048",
+    "pid": 640,
+    "name": "services.exe",
+    "user": "NT AUTHORITY\\SYSTEM",
+    "command_line": "",
+    "children": [
+      {
+        "process_id": "proc_0050",
+        "pid": 4812,
+        "name": "explorer.exe",
+        "user": "CORP\\jmalik",
+        "command_line": "explorer.exe",
+        "started": "2026-08-24T10:41:58Z",
+        "evidence_event": "evt_0188",
+        "children": [
+          {
+            "process_id": "proc_0049",
+            "pid": 7301,
+            "name": "cmd.exe",
+            "user": "CORP\\svc_backup",
+            "command_line": "cmd.exe /c winlogon-update.bat",
+            "started": "2026-08-24T10:42:09Z",
+            "evidence_event": "evt_0190",
+            "children": [
+              {
+                "process_id": "proc_0051",
+                "pid": 8124,
+                "name": "powershell.exe",
+                "user": "CORP\\svc_backup",
+                "command_line": "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File C:\\Users\\svc_backup\\AppData\\Roaming\\win_update.ps1",
+                "started": "2026-08-24T10:42:11Z",
+                "evidence_event": "evt_0192",
+                "script_block_evidence": ["evt_0193"],
+                "file_artifact": "C:\\Users\\svc_backup\\AppData\\Roaming\\win_update.ps1",
+                "network_connections": 12,
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "suspicious_processes": ["proc_0049", "proc_0051"]
+}

@@ -1,0 +1,11 @@
+{
+  "incident_id": "INC-2026-0042",
+  "hostname": "WKS-042",
+  "alert_type": "suspected-c2",
+  "severity": "high",
+  "timestamp": "2026-08-24T10:43:01Z",
+  "summary": "EDR flagged repeated outbound connections from powershell.exe on WKS-042 to a single external destination.",
+  "source_sensor": "edr-sim",
+  "detection_rule": "POWERSHELL_OUTBOUND_BEACON",
+  "scenario": "powershell_c2_beaconing"
+}

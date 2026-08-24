@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SentinelForge IncidentSession",
+  "type": "object",
+  "required": ["incident_id", "current_phase", "findings", "evidence_refs", "approval_state"],
+  "properties": {
+    "incident_id": { "type": "string", "pattern": "^INC-[0-9]{4}-[0-9]{4,6}$" },
+    "scenario": { "type": "string" },
+    "created_at": { "type": "string" },
+    "updated_at": { "type": "string" },
+    "alert": { "type": "object" },
+    "current_phase": {
+      "enum": [
+        "NEW",
+        "INVESTIGATING",
+        "EVIDENCE_READY",
+        "ASSESSMENT_READY",
+        "WAITING_FOR_APPROVAL",
+        "CONTAINED",
+        "DENIED",
+        "CLOSED"
+      ]
+    },
+    "findings": { "type": "array", "items": { "$ref": "finding.schema.json" } },
+    "evidence_refs": { "type": "array", "items": { "type": "string" } },
+    "iocs": { "type": "array", "items": { "type": "object" } },
+    "risk": {
+      "type": ["object", "null"],
+      "properties": {
+        "score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "severity": { "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+        "signals": { "type": "array" }
+      }
+    },
+    "confidence": { "type": ["number", "null"] },
+    "recommended_action": {
+      "type": ["string", "null"],
+      "enum": ["isolate_endpoint", "monitor", null]
+    },
+    "approval_state": {
+      "enum": ["NOT_REQUESTED", "PENDING", "APPROVE", "DENY"]
+    },
+    "response_state": {
+      "type": "string",
+      "enum": ["NONE", "ISOLATED", "NOT_EXECUTED", "UNKNOWN"]
+    },
+    "final_report": { "type": ["object", "null"] }
+  }
+}

@@ -1,0 +1,6 @@
+{"query_id": "dns_0001", "timestamp": "2026-08-24T10:42:15Z", "host": "WKS-042", "client_pid": 8124, "query": "metrics-telemetry-cdn.example", "qtype": "A", "answer": ["203.0.113.66"], "ttl_seconds": 300, "resolver": "10.20.0.53"}
+{"query_id": "dns_0002", "timestamp": "2026-08-24T10:42:47Z", "host": "WKS-042", "client_pid": 8124, "query": "metrics-telemetry-cdn.example", "qtype": "A", "answer": ["203.0.113.66"], "ttl_seconds": 300, "resolver": "10.20.0.53"}
+{"query_id": "dns_0003", "timestamp": "2026-08-24T10:43:00Z", "host": "WKS-042", "client_pid": 8124, "query": "update-sync-check.example", "qtype": "A", "answer": ["198.51.100.23"], "ttl_seconds": 60, "resolver": "10.20.0.53"}
+{"query_id": "dns_0004", "timestamp": "2026-08-24T10:39:12Z", "host": "WKS-042", "client_pid": 3120, "query": "portal.corp.example", "qtype": "A", "answer": ["10.20.5.10"], "ttl_seconds": 3600, "resolver": "10.20.0.53"}
+{"query_id": "dns_0005", "timestamp": "2026-08-24T10:40:02Z", "host": "WKS-042", "client_pid": 3120, "query": "mail.corp.example", "qtype": "A", "answer": ["10.20.5.22"], "ttl_seconds": 3600, "resolver": "10.20.0.53"}
+{"query_id": "dns_0006", "timestamp": "2026-08-24T10:42:16Z", "host": "WKS-042", "client_pid": 3120, "query": "fonts.gstatic-cdn.example", "qtype": "A", "answer": ["198.51.100.90"], "ttl_seconds": 7200, "resolver": "10.20.0.53"}

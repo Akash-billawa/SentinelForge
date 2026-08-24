@@ -1,0 +1,38 @@
+{
+  "scenario": "powershell_c2_beaconing",
+  "iocs": [
+    {
+      "type": "domain",
+      "value": "metrics-telemetry-cdn.example",
+      "verdict": "malicious",
+      "category": "c2",
+      "confidence": 0.93,
+      "first_seen": "2026-08-20T00:00:00Z",
+      "source": "synthetic-threat-feed"
+    },
+    {
+      "type": "ip",
+      "value": "203.0.113.66",
+      "verdict": "suspicious",
+      "category": "c2-infrastructure",
+      "confidence": 0.88,
+      "first_seen": "2026-08-21T00:00:00Z",
+      "source": "synthetic-threat-feed"
+    },
+    {
+      "type": "sha256",
+      "value": "b1946ac92492d2347c6235b4d2611184e0f3a1d2f4a5b6c7d8e9f00112233445",
+      "verdict": "malicious",
+      "category": "dropper",
+      "confidence": 0.9,
+      "first_seen": "2026-08-24T10:42:20Z",
+      "source": "synthetic-threat-feed"
+    }
+  ],
+  "mitre_attack": [
+    {"technique_id": "T1059.001", "name": "Command and Scripting Interpreter: PowerShell"},
+    {"technique_id": "T1027", "name": "Obfuscated Files or Information"},
+    {"technique_id": "T1071.001", "name": "Application Layer Protocol: Web Protocols"},
+    {"technique_id": "T1547.001", "name": "Boot or Logon Autostart Execution: Registry Run Keys"}
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "scenario": "powershell_c2_beaconing",
+  "description": "Ground truth used by tests and the replay validator. The agent must discover these through tools, never receive them directly.",
+  "findings": [
+    {
+      "finding": "PowerShell executed with bypass flags from a suspicious parent chain (explorer -> cmd -> powershell)",
+      "evidence": ["windows_events:evt_0190", "windows_events:evt_0192", "process_tree:proc_0051"],
+      "confidence": 0.97
+    },
+    {
+      "finding": "PowerShell executed an encoded/base64-decoded command",
+      "evidence": ["windows_events:evt_0193", "artifact:art_0001"],
+      "confidence": 0.96
+    },
+    {
+      "finding": "Suspicious DNS resolution of non-corporate telemetry domain",
+      "evidence": ["dns:dns_0001", "dns:dns_0002"],
+      "confidence": 0.92
+    },
+    {
+      "finding": "Periodic beacon pattern to single external endpoint (~15s cadence, near-constant payload size)",
+      "evidence": ["flows:flow_0101", "flows:flow_0102", "flows:flow_0103", "flows:flow_0104"],
+      "confidence": 0.95
+    },
+    {
+      "finding": "Artifact matches known-malicious hash and establishes registry persistence",
+      "evidence": ["ioc:sha256:b1946ac92492d2347c6235b4d2611184e0f3a1d2f4a5b6c7d8e9f00112233445", "windows_events:evt_0196"],
+      "confidence": 0.94
+    }
+  ],
+  "expected_risk": {"score_min": 90, "score_max": 100, "severity": "CRITICAL"},
+  "expected_recommended_action": "isolate_endpoint",
+  "expected_iocs": ["metrics-telemetry-cdn.example", "203.0.113.66", "b1946ac92492d2347c6235b4d2611184e0f3a1d2f4a5b6c7d8e9f00112233445"]
+}

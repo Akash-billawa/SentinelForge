@@ -1,0 +1,15 @@
+{
+  "artifact_id": "art_0001",
+  "path": "C:\\Users\\svc_backup\\AppData\\Roaming\\win_update.ps1",
+  "host": "WKS-042",
+  "size_bytes": 1489,
+  "created": "2026-08-24T10:42:20Z",
+  "modified": "2026-08-24T10:42:20Z",
+  "sha256": "b1946ac92492d2347c6235b4d2611184e0f3a1d2f4a5b6c7d8e9f00112233445",
+  "signed": false,
+  "signer": null,
+  "evidence_event": "evt_0195",
+  "persistence_reference": "evt_0196",
+  "executed_by_pid": 8124,
+  "quarantine_status": "none"
+}

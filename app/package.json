@@ -1,0 +1,15 @@
+{
+  "name": "sentinelforge-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "SentinelForge incident console - TrueForge SDK driver and mission control UI",
+  "scripts": {
+    "demo": "node run-demo.mjs",
+    "ui": "node serve-ui.mjs",
+    "install:sdk": "npm i @truefoundry/trueforge-sdk"
+  },
+  "dependencies": {
+    "@truefoundry/trueforge-sdk": "^1.0.0"
+  }
+}
