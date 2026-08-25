@@ -27,13 +27,17 @@ def _free_port() -> int:
 
 
 @pytest.fixture(scope="module")
-def mcp_url():
+def mcp_url(tmp_path_factory):
     port = _free_port()
+    # Isolate ALL server writes (incidents, audit, endpoint registry) in a
+    # temp state dir - tests must never contaminate real demo state.
+    state_dir = tmp_path_factory.mktemp("mcp-state")
     env = {
         **os.environ,
         "SENTINELFORGE_MCP_PORT": str(port),
         "SENTINELFORGE_MCP_HOST": "127.0.0.1",
         "SENTINELFORGE_REPO_ROOT": str(REPO_ROOT),
+        "SENTINELFORGE_STATE_DIR": str(state_dir),
     }
     proc = subprocess.Popen(
         [sys.executable, str(SERVER)],

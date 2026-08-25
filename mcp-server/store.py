@@ -24,8 +24,9 @@ from typing import Any
 _REPO_ROOT = Path(
     os.environ.get("SENTINELFORGE_REPO_ROOT") or Path(__file__).resolve().parents[1]
 )
+# Tests isolate via SENTINELFORGE_STATE_DIR so they never touch demo state.
+STATE_DIR = Path(os.environ.get("SENTINELFORGE_STATE_DIR") or (_REPO_ROOT / "state"))
 SCENARIOS_DIR = _REPO_ROOT / "scenarios"
-STATE_DIR = _REPO_ROOT / "state"
 
 _INCIDENT_ID_RE = re.compile(r"^INC-\d{4}-\d{4,6}$")
 

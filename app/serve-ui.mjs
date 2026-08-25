@@ -18,7 +18,8 @@ import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { MissionControl } from "./lib/mission-control.mjs";
-import { config } from "./lib/config.mjs";
+import { McpHttpClient } from "./lib/mcp-client.mjs";
+import { config, REPO_ROOT } from "./lib/config.mjs";
 
 const APP_DIR = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(APP_DIR, "public");
@@ -84,6 +85,20 @@ const server = http.createServer(async (req, res) => {
     // Reuse the SAME MissionControl instance so existing SSE subscribers keep
     // receiving events across runs (a fresh instance would orphan them).
     mc.reset();
+    // Deterministic replay: wipe any prior incident/endpoint state for this
+    // scenario so every START begins from a clean incident (a stale DENIED or
+    // CLOSED session would change the agent's behaviour mid-demo).
+    try {
+      const alert = JSON.parse(
+        readFileSync(path.join(REPO_ROOT, "scenarios", config.scenario, "alert.json"), "utf8"),
+      );
+      const mcp = new McpHttpClient(config.mcpUrl);
+      await mcp.init();
+      await mcp.call("reset_demo", { incident_id: alert.incident_id, host: alert.hostname });
+      console.log(`[serve-ui] demo state reset for ${alert.incident_id}`);
+    } catch (err) {
+      console.error("[serve-ui] pre-start reset failed:", String(err.message ?? err));
+    }
     mc.start().catch((err) => mc.recordStartupError(String(err.message ?? err)));
     return json(res, 202, { started: true, note: "stream /api/events for progress" });
   }
