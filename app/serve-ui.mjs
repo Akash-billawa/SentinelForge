@@ -117,7 +117,9 @@ const server = http.createServer(async (req, res) => {
   }
   const ext = path.extname(abs);
   const mime = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml" }[ext] ?? "application/octet-stream";
-  res.writeHead(200, { "content-type": mime });
+  // no-store: the console JS evolves between demo runs; a cached stale page
+  // renders nonsense (this bit us during testing).
+  res.writeHead(200, { "content-type": mime, "cache-control": "no-store" });
   res.end(readFileSync(abs));
 });
 

@@ -95,18 +95,36 @@ export class MissionControl {
     };
   }
 
-  /** Resolve a pending approval's tool name/args from its source model.message. */
-  static #resolveToolCall(eventsIndex, pending) {
+  /** Resolve a pending approval's tool name/args from stream-merged data. */
+  #resolvePendingToolCalls(pending) {
     return (pending.toolCalls ?? []).map((ref) => {
-      const msg = eventsIndex.get(ref.sourceEventId);
+      let name = "unknown";
+      let rawArgs = null;
+      const msg = this.#eventsIndex.get(ref.sourceEventId);
       const call = msg?.toolCalls?.find((tc) => tc.id === ref.id);
+      if (call) {
+        name = call.toolInfo?.name ?? call.function?.name ?? name;
+        rawArgs = call.function?.arguments;
+      }
+      if (name === "unknown") {
+        // Live streams carry tool calls as delta fragments merged in #msgAcc.
+        const acc = this.#msgAcc.get(ref.sourceEventId);
+        const slot =
+          acc?.calls?.find((c) => c.id === ref.id) ??
+          acc?.calls?.find((c) => c.name) ??
+          null;
+        if (slot?.name) {
+          name = slot.name;
+          rawArgs = slot.args;
+        }
+      }
       let args = {};
       try {
-        args = call ? JSON.parse(call.function.arguments || "{}") : {};
+        args = JSON.parse(rawArgs || "{}");
       } catch {
-        args = { _raw: call?.function?.arguments };
+        args = { _raw: String(rawArgs ?? "").slice(0, 200) };
       }
-      return { id: ref.id, name: call?.toolInfo?.name ?? "unknown", args };
+      return { id: ref.id, name, args };
     });
   }
 
@@ -297,7 +315,8 @@ export class MissionControl {
         const acc = this.#msgAcc.get(event.id) ?? { content: "", calls: [], flushed: false };
         if (typeof event.content === "string" && event.content) acc.content += event.content;
         (event.toolCalls ?? []).forEach((frag, i) => {
-          const slot = (acc.calls[i] ??= { name: null, args: "" });
+          const slot = (acc.calls[i] ??= { id: null, name: null, args: "" });
+          if (!slot.id && frag?.id) slot.id = frag.id;
           const name = frag?.function?.name ?? frag?.toolInfo?.name;
           if (name && !slot.name) slot.name = name;
           if (typeof frag?.function?.arguments === "string") slot.args += frag.function.arguments;
@@ -369,7 +388,7 @@ export class MissionControl {
       }
       case "tool.approval_required": {
         this.status = "WAITING_FOR_APPROVAL";
-        const toolCalls = MissionControl.#resolveToolCall(this.#eventsIndex, event);
+        const toolCalls = this.#resolvePendingToolCalls(event);
         this.pendingApproval = { threadId: event.threadId, toolCalls };
         this.#emit({
           type: "approval_required",
