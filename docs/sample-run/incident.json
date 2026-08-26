@@ -1,0 +1,875 @@
+{
+  "incident_id": "INC-2026-0042",
+  "scenario": "powershell_c2_beaconing",
+  "created_at": "2026-08-26T09:46:22.674Z",
+  "updated_at": "2026-08-26T09:56:21.211Z",
+  "alert": {
+    "incident_id": "INC-2026-0042",
+    "hostname": "WKS-042",
+    "alert_type": "suspected-c2",
+    "severity": "high",
+    "timestamp": "2026-08-24T10:43:01Z",
+    "summary": "EDR flagged repeated outbound connections from powershell.exe on WKS-042 to a single external destination.",
+    "source_sensor": "edr-sim",
+    "detection_rule": "POWERSHELL_OUTBOUND_BEACON",
+    "scenario": "powershell_c2_beaconing"
+  },
+  "current_phase": "CLOSED",
+  "findings": [
+    {
+      "finding": "At 2026-08-24T10:42:11Z powershell.exe (PID 8124) executed on WKS-042 with command line 'powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File C:\\Users\\svc_backup\\AppData\\Roaming\\win_update.ps1' \u2014 hidden, execution-policy-bypassed launch of a user-profile script.",
+      "evidence": [
+        "windows_events:evt_0192",
+        "process_tree:proc_0051"
+      ],
+      "confidence": 0.99,
+      "source_agent": "log-investigator",
+      "category": "powershell_execution",
+      "recorded_at": "2026-08-26T09:51:22.673Z"
+    },
+    {
+      "finding": "The script decoded an embedded base64 blob, passed it to Invoke-Expression, and started 'Start-SyncLoop' targeting metrics-telemetry-cdn.example:443 every 15 seconds \u2014 consistent with the EDR beaconing detection.",
+      "evidence": [
+        "windows_events:evt_0193"
+      ],
+      "confidence": 0.95,
+      "source_agent": "log-investigator",
+      "category": "encoded_command",
+      "recorded_at": "2026-08-26T09:51:22.689Z"
+    },
+    {
+      "finding": "All activity associated with the malicious chain (cmd, powershell, file creation, registry persistence) ran under service account CORP\\svc_backup.",
+      "evidence": [
+        "windows_events:evt_0192",
+        "windows_events:evt_0193",
+        "windows_events:evt_0196",
+        "process_tree:proc_0051"
+      ],
+      "confidence": 0.97,
+      "source_agent": "log-investigator",
+      "category": "powershell_execution",
+      "recorded_at": "2026-08-26T09:51:22.724Z"
+    },
+    {
+      "finding": "Process ancestry is services.exe (SYSTEM) -> explorer.exe (CORP\\jmalik, started 10:41:58Z) -> cmd.exe '/c winlogon-update.bat' (CORP\\svc_backup, 10:42:09Z) -> powershell.exe (CORP\\svc_backup, 10:42:11Z); the process tree explicitly flags proc_0049 (cmd) and proc_0051 (powershell) as suspicious.",
+      "evidence": [
+        "process_tree:proc_0048",
+        "process_tree:proc_0050",
+        "process_tree:proc_0049",
+        "process_tree:proc_0051",
+        "windows_events:evt_0188",
+        "windows_events:evt_0190"
+      ],
+      "confidence": 0.9,
+      "source_agent": "log-investigator",
+      "category": "powershell_execution",
+      "recorded_at": "2026-08-26T09:51:22.770Z"
+    },
+    {
+      "finding": "Anomalous user-context switch exists in the lineage: interactive shell explorer.exe running as CORP\\jmalik directly spawned cmd.exe as CORP\\svc_backup, suggesting possible credential theft or token manipulation of svc_backup.",
+      "evidence": [
+        "windows_events:evt_0188",
+        "windows_events:evt_0190",
+        "process_tree:proc_0049"
+      ],
+      "confidence": 0.75,
+      "source_agent": "log-investigator",
+      "category": "powershell_execution",
+      "recorded_at": "2026-08-26T09:51:22.820Z"
+    },
+    {
+      "finding": "File artifact C:\\Users\\svc_backup\\AppData\\Roaming\\win_update.ps1 was created 2026-08-24T10:42:20Z, size 1489 bytes, SHA256 b1946ac92492d2347c6235b4d2611184e0f3a1d2f4a5b6c7d8e9f00112233445, UNSIGNED (no signer), quarantine status none, and is tied to executing PID 8124.",
+      "evidence": [
+        "windows_events:evt_0195",
+        "artifact:art_0001"
+      ],
+      "confidence": 0.97,
+      "source_agent": "log-investigator",
+      "category": "suspicious_artifact",
+      "recorded_at": "2026-08-26T09:51:22.877Z"
+    },
+    {
+      "finding": "Persistence was established via HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run value 'WinUpdateSync' set at 10:42:22Z to relaunch the same powershell command at logon.",
+      "evidence": [
+        "windows_events:evt_0196",
+        "artifact:art_0001"
+      ],
+      "confidence": 0.95,
+      "source_agent": "log-investigator",
+      "category": "suspicious_artifact",
+      "recorded_at": "2026-08-26T09:51:22.932Z"
+    },
+    {
+      "finding": "The EDR alert (rule POWERSHELL_OUTBOUND_BEACON, severity HIGH) fired at 2026-08-24T10:43:01Z after observing 12 outbound connections in 180s from PID 8124 to a single external endpoint; full kill-chain timeline spans 10:41:58Z\u201310:43:01Z (~63s).",
+      "evidence": [
+        "windows_events:evt_0197",
+        "windows_events:evt_0192"
+      ],
+      "confidence": 0.95,
+      "source_agent": "log-investigator",
+      "category": "beacon_pattern",
+      "recorded_at": "2026-08-26T09:51:22.996Z"
+    },
+    {
+      "finding": "The suspicious PowerShell process (PID 8124) on WKS-042 resolved 'metrics-telemetry-cdn.example' (A record, TTL 300) to external IP 203.0.113.66 via internal resolver 10.20.0.53, querying it twice within 32 seconds immediately before the beaconing activity.",
+      "evidence": [
+        "dns:dns_0001",
+        "dns:dns_0002"
+      ],
+      "confidence": 0.98,
+      "source_agent": "network-investigator",
+      "category": "suspicious_dns",
+      "recorded_at": "2026-08-26T09:51:23.045Z"
+    },
+    {
+      "finding": "powershell.exe (PID 8124) made four short-lived outbound TCP sessions from 10.20.31.42 to a single concentrated external destination 203.0.113.66:443 between 10:42:17Z and 10:43:02Z, matching the EDR POWERSHELL_OUTBOUND_BEACON detection.",
+      "evidence": [
+        "flows:flow_0101",
+        "flows:flow_0102",
+        "flows:flow_0103",
+        "flows:flow_0104"
+      ],
+      "confidence": 0.99,
+      "source_agent": "network-investigator",
+      "category": "beacon_pattern",
+      "recorded_at": "2026-08-26T09:51:23.109Z"
+    },
+    {
+      "finding": "MEASURED: The four outbound flows occur at exact 15-second intervals (10:42:17\u219210:42:32\u219210:42:47\u219210:43:02, three intervals of precisely 15s, 0s observed jitter), with highly consistent transfer sizes of 798-812 bytes sent and 198-210 bytes received per session and uniform 2-second durations.",
+      "evidence": [
+        "flows:flow_0101",
+        "flows:flow_0102",
+        "flows:flow_0103",
+        "flows:flow_0104"
+      ],
+      "confidence": 0.97,
+      "source_agent": "network-investigator",
+      "category": "beacon_pattern",
+      "recorded_at": "2026-08-26T09:51:23.169Z"
+    },
+    {
+      "finding": "INTERPRETATION: The combination of machine-precision 15s callbacks, near-identical small payloads (~800B up/~200B down), fixed 2s session length, single-destination concentration, and origin from powershell.exe is characteristic of automated HTTPS C2 beaconing rather than human browsing.",
+      "evidence": [
+        "flows:flow_0101",
+        "flows:flow_0102",
+        "flows:flow_0103",
+        "flows:flow_0104",
+        "ioc:domain:metrics-telemetry-cdn.example"
+      ],
+      "confidence": 0.9,
+      "source_agent": "network-investigator",
+      "category": "beacon_pattern",
+      "recorded_at": "2026-08-26T09:51:23.234Z"
+    },
+    {
+      "finding": "Threat intelligence confirms both primary indicators as C2 infrastructure: domain 'metrics-telemetry-cdn.example' is rated MALICIOUS/c2 (confidence 0.93, first seen 2026-08-20) and its resolving IP 203.0.113.66 is rated SUSPICIOUS/c2-infrastructure (confidence 0.88, first seen 2026-08-21).",
+      "evidence": [
+        "ioc:domain:metrics-telemetry-cdn.example",
+        "ioc:ip:203.0.113.66"
+      ],
+      "confidence": 0.93,
+      "source_agent": "network-investigator",
+      "category": "threat_intel_match",
+      "recorded_at": "2026-08-26T09:51:23.314Z"
+    },
+    {
+      "finding": "The same PowerShell PID 8124 also queried 'update-sync-check.example' (A \u2192 198.51.100.23, low TTL 60s) at 10:43:00Z one second before the final beacon, but no network flow to 198.51.100.23 was ever observed \u2014 consistent with an attempted-but-unconnected fallback/backup C2 endpoint, though this link remains unconfirmed.",
+      "evidence": [
+        "dns:dns_0003",
+        "flows:flow_0104"
+      ],
+      "confidence": 0.55,
+      "source_agent": "network-investigator",
+      "category": "suspicious_dns",
+      "recorded_at": "2026-08-26T09:51:23.393Z"
+    },
+    {
+      "finding": "Other traffic on WKS-042 appears benign business activity unrelated to the alert: browser (msedge.exe, PID 3120) and outlook.exe connected only to internal corporate servers (portal.corp.example\u219210.20.5.10, mail.corp.example\u219210.20.5.22), and the externally-resolved 'fonts.gstatic-cdn.example' (198.51.100.90) had no threat-feed record and no associated powershell activity.",
+      "evidence": [
+        "dns:dns_0004",
+        "dns:dns_0005",
+        "dns:dns_0006",
+        "flows:flow_0110",
+        "flows:flow_0111"
+      ],
+      "confidence": 0.85,
+      "source_agent": "network-investigator",
+      "category": null,
+      "recorded_at": "2026-08-26T09:51:23.481Z"
+    },
+    {
+      "finding": "The PowerShell script decodes a base64-encoded payload at runtime; the decoded body is the placeholder string 'SYNTHETIC-DEMO-PAYLOAD', so full payload logic is NOT observable \u2014 PROVEN: runtime base64 decoding occurs; LIKELY: it is a staged dropper/beacon component whose final stage is fetched or executed post-decode.",
+      "evidence": [
+        "artifact:art_0001"
+      ],
+      "confidence": 0.75,
+      "source_agent": "malware-investigator",
+      "category": "encoded_command",
+      "recorded_at": "2026-08-26T09:51:23.569Z"
+    },
+    {
+      "finding": "The script references two external network destinations \u2014 domain 'metrics-telemetry-cdn.example' and IP '203.0.113.66' \u2014 and performs outbound HTTP requests consistent with the EDR POWERSHELL_OUTBOUND_BEACON detection.",
+      "evidence": [
+        "artifact:art_0001",
+        "ioc:domain:metrics-telemetry-cdn.example",
+        "ioc:ip:203.0.113.66"
+      ],
+      "confidence": 0.95,
+      "source_agent": "malware-investigator",
+      "category": "beacon_pattern",
+      "recorded_at": "2026-08-26T09:51:23.673Z"
+    },
+    {
+      "finding": "The on-host artifact is 'C:\\Users\\svc_backup\\AppData\\Roaming\\win_update.ps1' (WKS-042), 1,489 bytes, UNSIGNED with no signer, created/modified 2026-08-24T10:42:20Z \u2014 ~41 seconds before the 10:43:01Z EDR alert \u2014 executed by PID 8124, referenced by a persistence event (evt_0196), and NOT quarantined.",
+      "evidence": [
+        "artifact:art_0001"
+      ],
+      "confidence": 0.95,
+      "source_agent": "malware-investigator",
+      "category": "suspicious_artifact",
+      "recorded_at": "2026-08-26T09:51:23.779Z"
+    },
+    {
+      "finding": "Obfuscation/evasion techniques present: runtime base64 payload decode (obfuscation.base64), an infinite sleep loop typical of C2 beaconing (persistence.sleep_loop), and blanket error suppression to evade logging (discovery.error_suppress).",
+      "evidence": [
+        "artifact:art_0001"
+      ],
+      "confidence": 0.95,
+      "source_agent": "malware-investigator",
+      "category": "encoded_command",
+      "recorded_at": "2026-08-26T09:51:23.883Z"
+    },
+    {
+      "finding": "Threat intel confirms the deployed script's SHA-256 (b1946ac92492d2347c6235b4d2611184e0f3a1d2f4a5b6c7d8e9f00112233445) is MALICIOUS, categorized as a dropper with 0.90 feed confidence (first seen 2026-08-24T10:42:20Z, matching its creation time).",
+      "evidence": [
+        "ioc:sha256:b1946ac92492d2347c6235b4d2611184e0f3a1d2f4a5b6c7d8e9f00112233445"
+      ],
+      "confidence": 0.9,
+      "source_agent": "malware-investigator",
+      "category": "threat_intel_match",
+      "recorded_at": "2026-08-26T09:51:23.981Z"
+    },
+    {
+      "finding": "Threat intel independently rates the referenced C2 domain 'metrics-telemetry-cdn.example' MALICIOUS/c2 (confidence 0.93, first seen 2026-08-20) and the IP '203.0.113.66' SUSPICIOUS/c2-infrastructure (confidence 0.88, first seen 2026-08-21), corroborating the beacon destination attribution from static analysis.",
+      "evidence": [
+        "ioc:domain:metrics-telemetry-cdn.example",
+        "ioc:ip:203.0.113.66"
+      ],
+      "confidence": 0.9,
+      "source_agent": "malware-investigator",
+      "category": "threat_intel_match",
+      "recorded_at": "2026-08-26T09:51:24.086Z"
+    }
+  ],
+  "evidence_refs": [
+    "artifact:art_0001",
+    "dns:dns_0001",
+    "dns:dns_0002",
+    "dns:dns_0003",
+    "dns:dns_0004",
+    "dns:dns_0005",
+    "dns:dns_0006",
+    "flows:flow_0101",
+    "flows:flow_0102",
+    "flows:flow_0103",
+    "flows:flow_0104",
+    "flows:flow_0110",
+    "flows:flow_0111",
+    "ioc:domain:metrics-telemetry-cdn.example",
+    "ioc:ip:203.0.113.66",
+    "ioc:sha256:b1946ac92492d2347c6235b4d2611184e0f3a1d2f4a5b6c7d8e9f00112233445",
+    "process_tree:proc_0048",
+    "process_tree:proc_0049",
+    "process_tree:proc_0050",
+    "process_tree:proc_0051",
+    "windows_events:evt_0188",
+    "windows_events:evt_0190",
+    "windows_events:evt_0192",
+    "windows_events:evt_0193",
+    "windows_events:evt_0195",
+    "windows_events:evt_0196",
+    "windows_events:evt_0197"
+  ],
+  "iocs": [
+    {
+      "type": "domain",
+      "value": "metrics-telemetry-cdn.example",
+      "verdict": "malicious",
+      "category": "c2",
+      "confidence": 0.93,
+      "first_seen": "2026-08-20T00:00:00Z",
+      "source": "synthetic-threat-feed",
+      "evidence_ref": "ioc:domain:metrics-telemetry-cdn.example"
+    },
+    {
+      "type": "ip",
+      "value": "203.0.113.66",
+      "verdict": "suspicious",
+      "category": "c2-infrastructure",
+      "confidence": 0.88,
+      "first_seen": "2026-08-21T00:00:00Z",
+      "source": "synthetic-threat-feed",
+      "evidence_ref": "ioc:ip:203.0.113.66"
+    },
+    {
+      "type": "sha256",
+      "value": "b1946ac92492d2347c6235b4d2611184e0f3a1d2f4a5b6c7d8e9f00112233445",
+      "verdict": "malicious",
+      "category": "dropper",
+      "confidence": 0.9,
+      "first_seen": "2026-08-24T10:42:20Z",
+      "source": "synthetic-threat-feed",
+      "evidence_ref": "ioc:sha256:b1946ac92492d2347c6235b4d2611184e0f3a1d2f4a5b6c7d8e9f00112233445"
+    },
+    {
+      "type": "unknown",
+      "value": "update-sync-check.example",
+      "verdict": "not_found",
+      "category": null,
+      "confidence": 0.0,
+      "source": "synthetic-threat-feed",
+      "note": "indicator absent from synthetic threat feed"
+    },
+    {
+      "type": "unknown",
+      "value": "198.51.100.23",
+      "verdict": "not_found",
+      "category": null,
+      "confidence": 0.0,
+      "source": "synthetic-threat-feed",
+      "note": "indicator absent from synthetic threat feed"
+    }
+  ],
+  "risk": {
+    "score": 100,
+    "max_score": 100,
+    "severity": "CRITICAL",
+    "signals": [
+      {
+        "signal": "powershell_anomaly",
+        "points": 20
+      },
+      {
+        "signal": "encoded_command",
+        "points": 20
+      },
+      {
+        "signal": "powershell_anomaly",
+        "points": 20
+      },
+      {
+        "signal": "powershell_anomaly",
+        "points": 20
+      },
+      {
+        "signal": "powershell_anomaly",
+        "points": 20
+      },
+      {
+        "signal": "suspicious_artifact",
+        "points": 15
+      },
+      {
+        "signal": "suspicious_artifact",
+        "points": 15
+      },
+      {
+        "signal": "beacon_pattern",
+        "points": 20
+      },
+      {
+        "signal": "suspicious_dns",
+        "points": 15
+      },
+      {
+        "signal": "beacon_pattern",
+        "points": 20
+      },
+      {
+        "signal": "beacon_pattern",
+        "points": 20
+      },
+      {
+        "signal": "beacon_pattern",
+        "points": 20
+      },
+      {
+        "signal": "threat_intel_match",
+        "points": 10
+      },
+      {
+        "signal": "suspicious_dns",
+        "points": 15
+      },
+      {
+        "signal": "encoded_command",
+        "points": 20
+      },
+      {
+        "signal": "beacon_pattern",
+        "points": 20
+      },
+      {
+        "signal": "suspicious_artifact",
+        "points": 15
+      },
+      {
+        "signal": "encoded_command",
+        "points": 20
+      },
+      {
+        "signal": "threat_intel_match",
+        "points": 10
+      },
+      {
+        "signal": "threat_intel_match",
+        "points": 10
+      }
+    ],
+    "ignored_signals": [],
+    "formula": "sum(signal weights), capped at 100; weights are fixed policy",
+    "confidence": 0.905,
+    "recommended_action": "isolate_endpoint"
+  },
+  "confidence": 0.905,
+  "recommended_action": "isolate_endpoint",
+  "approval_state": "APPROVE",
+  "response_state": "ISOLATED",
+  "final_report": {
+    "incident_id": "INC-2026-0042",
+    "generated_at": "2026-08-26T09:56:21.209Z",
+    "executive_summary": "EDR alert INC-2026-0042 on WKS-042 is CONFIRMED malicious: an unsigned, base64-obfuscated PowerShell dropper (win_update.ps1, SHA256 b1946ac9...3445 \u2014 feed-rated MALICIOUS) executed under CORP\\svc_backup with hidden window and ExecutionPolicy Bypass, established HKCU Run-key persistence ('WinUpdateSync'), and beacons to attacker infrastructure metrics-telemetry-cdn.example / 203.0.113.66:443 on a machine-precision 15-second cycle corroborated by DNS logs, netflows, and threat intel. Correlated risk scored 100/100 (CRITICAL, avg confidence 0.905); with human approval the host was isolated at 09:55:47Z, cutting the C2 channel while remediation proceeds.",
+    "conclusion": "VERDICT: TRUE POSITIVE \u2014 active PowerShell HTTPS C2 beaconing from WKS-042, contained by endpoint isolation at 2026-08-26T09:55:47Z with human approval.\n\nSTRONGEST EVIDENCE CHAIN: The EDR detection rule POWERSHELL_OUTBOUND_BEACON fired at 10:43:01Z after 12 outbound connections in 180s from a single powershell.exe PID [windows_events:evt_0197] -> that process was launched at 10:42:11Z hidden with -ExecutionPolicy Bypass running C:\\Users\\svc_backup\\AppData\\Roaming\\win_update.ps1 under CORP\\svc_backup [windows_events:evt_0192, process_tree:proc_0051] -> the payload is an UNSIGNED 1,489-byte script whose SHA256 b1946ac92492d2347c6235b4d2611184e0f3a1d2f4a5b6c7d8e9f00112233445 is feed-confirmed MALICIOUS/dropper, created 41s before the alert and NOT quarantined [artifact:art_0001, ioc:sha256:b1946ac9...] -> it base64-decodes a blob into Invoke-Expression and runs Start-SyncLoop against metrics-telemetry-cdn.example:443 on a 15-second cycle [windows_events:evt_0193] -> DNS confirms the same PID resolved that domain to 203.0.113.66 [dns:dns_0001, dns:dns_0002] and flow telemetry shows four sessions to 203.0.113.66:443 at exact 15s intervals with uniform ~800B/~200B payloads [flows:flow_0101..0104] -> threat intel independently rates the domain MALICIOUS/c2 (first seen 2026-08-20) and IP SUSPICIOUS/c2-infrastructure [ioc:domain:metrics-telemetry-cdn.example, ioc:ip:203.0.113.66]. Persistence via HKCU Run value 'WinUpdateSync' [windows_events:evt_0196]. Risk 100/100 CRITICAL across 21 findings from 3 independent investigators; beacon_pattern corroborated by all three.\n\nPROVEN vs LIKELY: PROVEN \u2014 execution, obfuscation, 15s beacon cadence to flagged infrastructure, persistence mechanism, TI matches. LIKELY \u2014 full dropper/second-stage behavior: the runtime-decoded body is the placeholder 'SYNTHETIC-DEMO-PAYLOAD', so post-decode actions were not statically observable (confidence 0.75 finding).\n\nRESIDUAL UNCERTAINTY: (1) fallback C2 'update-sync-check.example' -> 198.51.100.23 was queried but never connected [dns:dns_0003]; feed-absent, link unconfirmed (conf 0.55). (2) explorer.exe running as CORP\\jmalik spawning cmd.exe as CORP\\svc_backup suggests possible credential theft/token manipulation of svc_backup [process_tree:proc_0049] \u2014 needs credential-response follow-up. (3) Minor timestamp inconsistency (script-block log 10:42:13Z vs file create 10:42:20Z) noted in evt_0195/evt_0193; execution anchored to process creation 10:42:11Z.",
+    "alert": {
+      "incident_id": "INC-2026-0042",
+      "hostname": "WKS-042",
+      "alert_type": "suspected-c2",
+      "severity": "high",
+      "timestamp": "2026-08-24T10:43:01Z",
+      "summary": "EDR flagged repeated outbound connections from powershell.exe on WKS-042 to a single external destination.",
+      "source_sensor": "edr-sim",
+      "detection_rule": "POWERSHELL_OUTBOUND_BEACON",
+      "scenario": "powershell_c2_beaconing"
+    },
+    "findings": [
+      {
+        "finding": "At 2026-08-24T10:42:11Z powershell.exe (PID 8124) executed on WKS-042 with command line 'powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File C:\\Users\\svc_backup\\AppData\\Roaming\\win_update.ps1' \u2014 hidden, execution-policy-bypassed launch of a user-profile script.",
+        "evidence": [
+          "windows_events:evt_0192",
+          "process_tree:proc_0051"
+        ],
+        "confidence": 0.99,
+        "source_agent": "log-investigator",
+        "category": "powershell_execution",
+        "recorded_at": "2026-08-26T09:51:22.673Z"
+      },
+      {
+        "finding": "The script decoded an embedded base64 blob, passed it to Invoke-Expression, and started 'Start-SyncLoop' targeting metrics-telemetry-cdn.example:443 every 15 seconds \u2014 consistent with the EDR beaconing detection.",
+        "evidence": [
+          "windows_events:evt_0193"
+        ],
+        "confidence": 0.95,
+        "source_agent": "log-investigator",
+        "category": "encoded_command",
+        "recorded_at": "2026-08-26T09:51:22.689Z"
+      },
+      {
+        "finding": "All activity associated with the malicious chain (cmd, powershell, file creation, registry persistence) ran under service account CORP\\svc_backup.",
+        "evidence": [
+          "windows_events:evt_0192",
+          "windows_events:evt_0193",
+          "windows_events:evt_0196",
+          "process_tree:proc_0051"
+        ],
+        "confidence": 0.97,
+        "source_agent": "log-investigator",
+        "category": "powershell_execution",
+        "recorded_at": "2026-08-26T09:51:22.724Z"
+      },
+      {
+        "finding": "Process ancestry is services.exe (SYSTEM) -> explorer.exe (CORP\\jmalik, started 10:41:58Z) -> cmd.exe '/c winlogon-update.bat' (CORP\\svc_backup, 10:42:09Z) -> powershell.exe (CORP\\svc_backup, 10:42:11Z); the process tree explicitly flags proc_0049 (cmd) and proc_0051 (powershell) as suspicious.",
+        "evidence": [
+          "process_tree:proc_0048",
+          "process_tree:proc_0050",
+          "process_tree:proc_0049",
+          "process_tree:proc_0051",
+          "windows_events:evt_0188",
+          "windows_events:evt_0190"
+        ],
+        "confidence": 0.9,
+        "source_agent": "log-investigator",
+        "category": "powershell_execution",
+        "recorded_at": "2026-08-26T09:51:22.770Z"
+      },
+      {
+        "finding": "Anomalous user-context switch exists in the lineage: interactive shell explorer.exe running as CORP\\jmalik directly spawned cmd.exe as CORP\\svc_backup, suggesting possible credential theft or token manipulation of svc_backup.",
+        "evidence": [
+          "windows_events:evt_0188",
+          "windows_events:evt_0190",
+          "process_tree:proc_0049"
+        ],
+        "confidence": 0.75,
+        "source_agent": "log-investigator",
+        "category": "powershell_execution",
+        "recorded_at": "2026-08-26T09:51:22.820Z"
+      },
+      {
+        "finding": "File artifact C:\\Users\\svc_backup\\AppData\\Roaming\\win_update.ps1 was created 2026-08-24T10:42:20Z, size 1489 bytes, SHA256 b1946ac92492d2347c6235b4d2611184e0f3a1d2f4a5b6c7d8e9f00112233445, UNSIGNED (no signer), quarantine status none, and is tied to executing PID 8124.",
+        "evidence": [
+          "windows_events:evt_0195",
+          "artifact:art_0001"
+        ],
+        "confidence": 0.97,
+        "source_agent": "log-investigator",
+        "category": "suspicious_artifact",
+        "recorded_at": "2026-08-26T09:51:22.877Z"
+      },
+      {
+        "finding": "Persistence was established via HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run value 'WinUpdateSync' set at 10:42:22Z to relaunch the same powershell command at logon.",
+        "evidence": [
+          "windows_events:evt_0196",
+          "artifact:art_0001"
+        ],
+        "confidence": 0.95,
+        "source_agent": "log-investigator",
+        "category": "suspicious_artifact",
+        "recorded_at": "2026-08-26T09:51:22.932Z"
+      },
+      {
+        "finding": "The EDR alert (rule POWERSHELL_OUTBOUND_BEACON, severity HIGH) fired at 2026-08-24T10:43:01Z after observing 12 outbound connections in 180s from PID 8124 to a single external endpoint; full kill-chain timeline spans 10:41:58Z\u201310:43:01Z (~63s).",
+        "evidence": [
+          "windows_events:evt_0197",
+          "windows_events:evt_0192"
+        ],
+        "confidence": 0.95,
+        "source_agent": "log-investigator",
+        "category": "beacon_pattern",
+        "recorded_at": "2026-08-26T09:51:22.996Z"
+      },
+      {
+        "finding": "The suspicious PowerShell process (PID 8124) on WKS-042 resolved 'metrics-telemetry-cdn.example' (A record, TTL 300) to external IP 203.0.113.66 via internal resolver 10.20.0.53, querying it twice within 32 seconds immediately before the beaconing activity.",
+        "evidence": [
+          "dns:dns_0001",
+          "dns:dns_0002"
+        ],
+        "confidence": 0.98,
+        "source_agent": "network-investigator",
+        "category": "suspicious_dns",
+        "recorded_at": "2026-08-26T09:51:23.045Z"
+      },
+      {
+        "finding": "powershell.exe (PID 8124) made four short-lived outbound TCP sessions from 10.20.31.42 to a single concentrated external destination 203.0.113.66:443 between 10:42:17Z and 10:43:02Z, matching the EDR POWERSHELL_OUTBOUND_BEACON detection.",
+        "evidence": [
+          "flows:flow_0101",
+          "flows:flow_0102",
+          "flows:flow_0103",
+          "flows:flow_0104"
+        ],
+        "confidence": 0.99,
+        "source_agent": "network-investigator",
+        "category": "beacon_pattern",
+        "recorded_at": "2026-08-26T09:51:23.109Z"
+      },
+      {
+        "finding": "MEASURED: The four outbound flows occur at exact 15-second intervals (10:42:17\u219210:42:32\u219210:42:47\u219210:43:02, three intervals of precisely 15s, 0s observed jitter), with highly consistent transfer sizes of 798-812 bytes sent and 198-210 bytes received per session and uniform 2-second durations.",
+        "evidence": [
+          "flows:flow_0101",
+          "flows:flow_0102",
+          "flows:flow_0103",
+          "flows:flow_0104"
+        ],
+        "confidence": 0.97,
+        "source_agent": "network-investigator",
+        "category": "beacon_pattern",
+        "recorded_at": "2026-08-26T09:51:23.169Z"
+      },
+      {
+        "finding": "INTERPRETATION: The combination of machine-precision 15s callbacks, near-identical small payloads (~800B up/~200B down), fixed 2s session length, single-destination concentration, and origin from powershell.exe is characteristic of automated HTTPS C2 beaconing rather than human browsing.",
+        "evidence": [
+          "flows:flow_0101",
+          "flows:flow_0102",
+          "flows:flow_0103",
+          "flows:flow_0104",
+          "ioc:domain:metrics-telemetry-cdn.example"
+        ],
+        "confidence": 0.9,
+        "source_agent": "network-investigator",
+        "category": "beacon_pattern",
+        "recorded_at": "2026-08-26T09:51:23.234Z"
+      },
+      {
+        "finding": "Threat intelligence confirms both primary indicators as C2 infrastructure: domain 'metrics-telemetry-cdn.example' is rated MALICIOUS/c2 (confidence 0.93, first seen 2026-08-20) and its resolving IP 203.0.113.66 is rated SUSPICIOUS/c2-infrastructure (confidence 0.88, first seen 2026-08-21).",
+        "evidence": [
+          "ioc:domain:metrics-telemetry-cdn.example",
+          "ioc:ip:203.0.113.66"
+        ],
+        "confidence": 0.93,
+        "source_agent": "network-investigator",
+        "category": "threat_intel_match",
+        "recorded_at": "2026-08-26T09:51:23.314Z"
+      },
+      {
+        "finding": "The same PowerShell PID 8124 also queried 'update-sync-check.example' (A \u2192 198.51.100.23, low TTL 60s) at 10:43:00Z one second before the final beacon, but no network flow to 198.51.100.23 was ever observed \u2014 consistent with an attempted-but-unconnected fallback/backup C2 endpoint, though this link remains unconfirmed.",
+        "evidence": [
+          "dns:dns_0003",
+          "flows:flow_0104"
+        ],
+        "confidence": 0.55,
+        "source_agent": "network-investigator",
+        "category": "suspicious_dns",
+        "recorded_at": "2026-08-26T09:51:23.393Z"
+      },
+      {
+        "finding": "Other traffic on WKS-042 appears benign business activity unrelated to the alert: browser (msedge.exe, PID 3120) and outlook.exe connected only to internal corporate servers (portal.corp.example\u219210.20.5.10, mail.corp.example\u219210.20.5.22), and the externally-resolved 'fonts.gstatic-cdn.example' (198.51.100.90) had no threat-feed record and no associated powershell activity.",
+        "evidence": [
+          "dns:dns_0004",
+          "dns:dns_0005",
+          "dns:dns_0006",
+          "flows:flow_0110",
+          "flows:flow_0111"
+        ],
+        "confidence": 0.85,
+        "source_agent": "network-investigator",
+        "category": null,
+        "recorded_at": "2026-08-26T09:51:23.481Z"
+      },
+      {
+        "finding": "The PowerShell script decodes a base64-encoded payload at runtime; the decoded body is the placeholder string 'SYNTHETIC-DEMO-PAYLOAD', so full payload logic is NOT observable \u2014 PROVEN: runtime base64 decoding occurs; LIKELY: it is a staged dropper/beacon component whose final stage is fetched or executed post-decode.",
+        "evidence": [
+          "artifact:art_0001"
+        ],
+        "confidence": 0.75,
+        "source_agent": "malware-investigator",
+        "category": "encoded_command",
+        "recorded_at": "2026-08-26T09:51:23.569Z"
+      },
+      {
+        "finding": "The script references two external network destinations \u2014 domain 'metrics-telemetry-cdn.example' and IP '203.0.113.66' \u2014 and performs outbound HTTP requests consistent with the EDR POWERSHELL_OUTBOUND_BEACON detection.",
+        "evidence": [
+          "artifact:art_0001",
+          "ioc:domain:metrics-telemetry-cdn.example",
+          "ioc:ip:203.0.113.66"
+        ],
+        "confidence": 0.95,
+        "source_agent": "malware-investigator",
+        "category": "beacon_pattern",
+        "recorded_at": "2026-08-26T09:51:23.673Z"
+      },
+      {
+        "finding": "The on-host artifact is 'C:\\Users\\svc_backup\\AppData\\Roaming\\win_update.ps1' (WKS-042), 1,489 bytes, UNSIGNED with no signer, created/modified 2026-08-24T10:42:20Z \u2014 ~41 seconds before the 10:43:01Z EDR alert \u2014 executed by PID 8124, referenced by a persistence event (evt_0196), and NOT quarantined.",
+        "evidence": [
+          "artifact:art_0001"
+        ],
+        "confidence": 0.95,
+        "source_agent": "malware-investigator",
+        "category": "suspicious_artifact",
+        "recorded_at": "2026-08-26T09:51:23.779Z"
+      },
+      {
+        "finding": "Obfuscation/evasion techniques present: runtime base64 payload decode (obfuscation.base64), an infinite sleep loop typical of C2 beaconing (persistence.sleep_loop), and blanket error suppression to evade logging (discovery.error_suppress).",
+        "evidence": [
+          "artifact:art_0001"
+        ],
+        "confidence": 0.95,
+        "source_agent": "malware-investigator",
+        "category": "encoded_command",
+        "recorded_at": "2026-08-26T09:51:23.883Z"
+      },
+      {
+        "finding": "Threat intel confirms the deployed script's SHA-256 (b1946ac92492d2347c6235b4d2611184e0f3a1d2f4a5b6c7d8e9f00112233445) is MALICIOUS, categorized as a dropper with 0.90 feed confidence (first seen 2026-08-24T10:42:20Z, matching its creation time).",
+        "evidence": [
+          "ioc:sha256:b1946ac92492d2347c6235b4d2611184e0f3a1d2f4a5b6c7d8e9f00112233445"
+        ],
+        "confidence": 0.9,
+        "source_agent": "malware-investigator",
+        "category": "threat_intel_match",
+        "recorded_at": "2026-08-26T09:51:23.981Z"
+      },
+      {
+        "finding": "Threat intel independently rates the referenced C2 domain 'metrics-telemetry-cdn.example' MALICIOUS/c2 (confidence 0.93, first seen 2026-08-20) and the IP '203.0.113.66' SUSPICIOUS/c2-infrastructure (confidence 0.88, first seen 2026-08-21), corroborating the beacon destination attribution from static analysis.",
+        "evidence": [
+          "ioc:domain:metrics-telemetry-cdn.example",
+          "ioc:ip:203.0.113.66"
+        ],
+        "confidence": 0.9,
+        "source_agent": "malware-investigator",
+        "category": "threat_intel_match",
+        "recorded_at": "2026-08-26T09:51:24.086Z"
+      }
+    ],
+    "evidence_refs": [
+      "artifact:art_0001",
+      "dns:dns_0001",
+      "dns:dns_0002",
+      "dns:dns_0003",
+      "dns:dns_0004",
+      "dns:dns_0005",
+      "dns:dns_0006",
+      "flows:flow_0101",
+      "flows:flow_0102",
+      "flows:flow_0103",
+      "flows:flow_0104",
+      "flows:flow_0110",
+      "flows:flow_0111",
+      "ioc:domain:metrics-telemetry-cdn.example",
+      "ioc:ip:203.0.113.66",
+      "ioc:sha256:b1946ac92492d2347c6235b4d2611184e0f3a1d2f4a5b6c7d8e9f00112233445",
+      "process_tree:proc_0048",
+      "process_tree:proc_0049",
+      "process_tree:proc_0050",
+      "process_tree:proc_0051",
+      "windows_events:evt_0188",
+      "windows_events:evt_0190",
+      "windows_events:evt_0192",
+      "windows_events:evt_0193",
+      "windows_events:evt_0195",
+      "windows_events:evt_0196",
+      "windows_events:evt_0197"
+    ],
+    "iocs": [
+      {
+        "type": "domain",
+        "value": "metrics-telemetry-cdn.example",
+        "verdict": "malicious",
+        "category": "c2",
+        "confidence": 0.93,
+        "first_seen": "2026-08-20T00:00:00Z",
+        "source": "synthetic-threat-feed",
+        "evidence_ref": "ioc:domain:metrics-telemetry-cdn.example"
+      },
+      {
+        "type": "ip",
+        "value": "203.0.113.66",
+        "verdict": "suspicious",
+        "category": "c2-infrastructure",
+        "confidence": 0.88,
+        "first_seen": "2026-08-21T00:00:00Z",
+        "source": "synthetic-threat-feed",
+        "evidence_ref": "ioc:ip:203.0.113.66"
+      },
+      {
+        "type": "sha256",
+        "value": "b1946ac92492d2347c6235b4d2611184e0f3a1d2f4a5b6c7d8e9f00112233445",
+        "verdict": "malicious",
+        "category": "dropper",
+        "confidence": 0.9,
+        "first_seen": "2026-08-24T10:42:20Z",
+        "source": "synthetic-threat-feed",
+        "evidence_ref": "ioc:sha256:b1946ac92492d2347c6235b4d2611184e0f3a1d2f4a5b6c7d8e9f00112233445"
+      },
+      {
+        "type": "unknown",
+        "value": "update-sync-check.example",
+        "verdict": "not_found",
+        "category": null,
+        "confidence": 0.0,
+        "source": "synthetic-threat-feed",
+        "note": "indicator absent from synthetic threat feed"
+      },
+      {
+        "type": "unknown",
+        "value": "198.51.100.23",
+        "verdict": "not_found",
+        "category": null,
+        "confidence": 0.0,
+        "source": "synthetic-threat-feed",
+        "note": "indicator absent from synthetic threat feed"
+      }
+    ],
+    "risk": {
+      "score": 100,
+      "max_score": 100,
+      "severity": "CRITICAL",
+      "signals": [
+        {
+          "signal": "powershell_anomaly",
+          "points": 20
+        },
+        {
+          "signal": "encoded_command",
+          "points": 20
+        },
+        {
+          "signal": "powershell_anomaly",
+          "points": 20
+        },
+        {
+          "signal": "powershell_anomaly",
+          "points": 20
+        },
+        {
+          "signal": "powershell_anomaly",
+          "points": 20
+        },
+        {
+          "signal": "suspicious_artifact",
+          "points": 15
+        },
+        {
+          "signal": "suspicious_artifact",
+          "points": 15
+        },
+        {
+          "signal": "beacon_pattern",
+          "points": 20
+        },
+        {
+          "signal": "suspicious_dns",
+          "points": 15
+        },
+        {
+          "signal": "beacon_pattern",
+          "points": 20
+        },
+        {
+          "signal": "beacon_pattern",
+          "points": 20
+        },
+        {
+          "signal": "beacon_pattern",
+          "points": 20
+        },
+        {
+          "signal": "threat_intel_match",
+          "points": 10
+        },
+        {
+          "signal": "suspicious_dns",
+          "points": 15
+        },
+        {
+          "signal": "encoded_command",
+          "points": 20
+        },
+        {
+          "signal": "beacon_pattern",
+          "points": 20
+        },
+        {
+          "signal": "suspicious_artifact",
+          "points": 15
+        },
+        {
+          "signal": "encoded_command",
+          "points": 20
+        },
+        {
+          "signal": "threat_intel_match",
+          "points": 10
+        },
+        {
+          "signal": "threat_intel_match",
+          "points": 10
+        }
+      ],
+      "ignored_signals": [],
+      "formula": "sum(signal weights), capped at 100; weights are fixed policy",
+      "confidence": 0.905,
+      "recommended_action": "isolate_endpoint"
+    },
+    "confidence": 0.905,
+    "recommended_action": "isolate_endpoint",
+    "approval_state": "APPROVE",
+    "response_state": "ISOLATED"
+  }
+}

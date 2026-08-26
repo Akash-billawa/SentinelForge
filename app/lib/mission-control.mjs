@@ -126,6 +126,18 @@ export class MissionControl {
       } catch {
         args = { _raw: String(rawArgs ?? "").slice(0, 200) };
       }
+      // Deferred-tool harnesses wrap real tools in call_tool(mcp_server,
+      // tool_name, arguments) - surface the INNER tool for humans.
+      if ((name === "call_tool" || name === "call-group-tool") && args.tool_name) {
+        name = args.tool_name;
+        if (args.arguments !== undefined) {
+          try {
+            args = typeof args.arguments === "string" ? JSON.parse(args.arguments) : args.arguments;
+          } catch {
+            /* keep wrapper args */
+          }
+        }
+      }
       return { id: ref.id, name, args };
     });
   }

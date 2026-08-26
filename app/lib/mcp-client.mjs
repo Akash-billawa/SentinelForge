@@ -23,7 +23,13 @@ export class McpHttpClient {
     if (ct.includes("text/event-stream")) {
       const text = await res.text();
       for (const line of text.split("\n")) {
-        if (line.startsWith("data:")) return JSON.parse(line.slice(5).trim());
+        if (line.startsWith("data:") && line.slice(5).trim()) {
+          try {
+            return JSON.parse(line.slice(5).trim());
+          } catch {
+            /* empty keepalive data line - keep scanning */
+          }
+        }
       }
       throw new Error("empty SSE body from MCP server");
     }
