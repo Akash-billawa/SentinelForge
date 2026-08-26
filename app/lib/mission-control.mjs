@@ -44,13 +44,15 @@ export class MissionControl {
     this.sessionId = null;
     this.events = []; // normalized UI events
     this.pendingApproval = null; // { threadId, toolCalls: [{id,name,args}] }
-    this.status = "IDLE"; // IDLE|INVESTIGATING|WAITING_FOR_APPROVAL|CONTAINED|DENIED|CLOSED|ERROR
+    this.status = "IDLE"; // IDLE|INVESTIGATING|RETRYING|WAITING_FOR_APPROVAL|CONTAINED|DENIED|CLOSED|ERROR
+    this.lastEventAt = Date.now();
     this.subscribers = new Set();
     this.incidentId = null;
     this.finalReport = null;
   }
 
   #emit(evt) {
+    this.lastEventAt = Date.now();
     const runSeq = this.#runSeq;
     const record = { seq: this.events.length + 1, at: new Date().toISOString(), ...evt };
     if (runSeq !== this.#runSeq) return record; // stale writer from a pre-reset run
@@ -187,6 +189,37 @@ export class MissionControl {
       text: `Session ${session.id} opened on ${config.trueforgeBaseUrl} - SOC Commander online.`,
     });
     await this.#runTurn([{ type: "user.message", content: kickoffPrompt() }]);
+    return this.snapshot();
+  }
+
+  /**
+   * Resume a stalled investigation on the existing session (e.g. after a
+   * server-execution-timeout cancelled the turn). The agent keeps its full
+   * session context, so a single continuation prompt is enough.
+   */
+  async resume() {
+    if (!this.client || !this.sessionId) throw new Error("no session to resume");
+    if (this.status === "INVESTIGATING" || this.status === "RETRYING") {
+      const idleForMs = Date.now() - this.lastEventAt;
+      if (idleForMs < 90_000) {
+        throw new Error(`turn looks alive (last event ${Math.round(idleForMs / 1000)}s ago)`);
+      }
+      // Stale stream: treat as dead and resume on the same session.
+    }
+    this.pendingApproval = null;
+    this.status = "INVESTIGATING";
+    this.#emit({
+      type: "console",
+      level: "info",
+      text: `Resuming session ${this.sessionId} from where it stopped...`,
+    });
+    await this.#runTurn([
+      {
+        type: "user.message",
+        content:
+          "Continue the investigation from exactly where you stopped. Complete the remaining workflow steps: if risk >= 70 request human authorization via request_response_authorization, attempt isolate_endpoint (TrueForge will pause for the human checkpoint), record the human decision if denied, and finish with finalize_incident_report plus a concise summary.",
+      },
+    ]);
     return this.snapshot();
   }
 

@@ -99,10 +99,19 @@ function main() {
   ensurePackage();
   patchKysely();
 
+  // Slow reasoning models can exceed TrueForge's default 10-minute turn cap;
+  // give investigations 30 minutes unless overridden.
+  if (!process.env.SERVER_EXECUTION_TIMEOUT_SECONDS) {
+    process.env.SERVER_EXECUTION_TIMEOUT_SECONDS = "1800";
+  }
+
   const cli = path.join(REPO_ROOT, "node_modules", "@truefoundry", "trueforge", "dist", "cli.js");
   const args = process.argv.slice(2);
   console.log("[run-trueforge] starting TrueForge...");
-  const child = spawn(process.execPath, [cli, ...args], { stdio: "inherit" });
+  const child = spawn(process.execPath, [cli, ...args], {
+    stdio: "inherit",
+    env: { ...process.env },
+  });
   child.on("exit", (code) => process.exit(code ?? 0));
 }
 

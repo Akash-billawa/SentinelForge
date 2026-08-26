@@ -17,12 +17,88 @@ import http from "node:http";
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawn } from "node:child_process";
 import { MissionControl } from "./lib/mission-control.mjs";
 import { McpHttpClient } from "./lib/mcp-client.mjs";
+import { AutoDemo } from "./lib/auto-demo.mjs";
 import { config, REPO_ROOT } from "./lib/config.mjs";
 
 const APP_DIR = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(APP_DIR, "public");
+
+// ---------------------------------------------------------------------------
+// Stack supervisor: serve-ui owns the other two services. One command boots
+// the whole demo stack, and a watchdog respawns anything that dies. This also
+// makes children survive shell exits on Windows (serve-ui outlives shells).
+// ---------------------------------------------------------------------------
+
+const TF_PORT = Number(new URL(config.trueforgeBaseUrl).port || 8790);
+const MCP_PORT = Number(new URL(config.mcpUrl).port || 8765);
+
+function portAlive(port) {
+  // Probe by binding: if the bind FAILS the port is occupied (service up);
+  // if it succeeds nothing is listening (service down).
+  return new Promise((resolve) => {
+    const net = http.createServer();
+    net.once("error", () => resolve(true));
+    net.once("listening", () => net.close(() => resolve(false)));
+    net.listen(port, "127.0.0.1");
+  });
+}
+
+function spawnDetached(cmd, args) {
+  const child = spawn(cmd, args, {
+    cwd: REPO_ROOT,
+    env: process.env,
+    detached: true,
+    stdio: "ignore",
+    windowsHide: true,
+  });
+  child.unref();
+  return child.pid;
+}
+
+async function ensureService(port, label, spawnFn) {
+  if (await portAlive(port)) {
+    console.log(`[supervisor] ${label} already up on :${port}`);
+    return;
+  }
+  console.log(`[supervisor] starting ${label} on :${port}...`);
+  spawnFn();
+  for (let i = 0; i < 40; i += 1) {
+    await new Promise((r) => setTimeout(r, 1000));
+    if (await portAlive(port)) {
+      console.log(`[supervisor] ${label} is up`);
+      return;
+    }
+  }
+  console.error(`[supervisor] ${label} failed to come up on :${port}`);
+}
+
+async function supervise() {
+  const venvPython = path.join(REPO_ROOT, ".venv", "Scripts", "python.exe");
+  const pythonCmd = existsSync(venvPython) ? venvPython : "python";
+
+  await ensureService(MCP_PORT, "sentinelforge-mcp", () =>
+    spawnDetached(pythonCmd, ["mcp-server/server.py"]),
+  );
+  await ensureService(TF_PORT, "trueforge", () =>
+    spawnDetached(process.execPath, ["scripts/run-trueforge.mjs"]),
+  );
+
+  // Watchdog: respawn any service that dies while we run.
+  setInterval(async () => {
+    if (!(await portAlive(MCP_PORT))) {
+      console.warn("[supervisor] mcp server died - respawning");
+      spawnDetached(pythonCmd, ["mcp-server/server.py"]);
+    }
+    if (!(await portAlive(TF_PORT))) {
+      console.warn("[supervisor] trueforge died - respawning");
+      spawnDetached(process.execPath, ["scripts/run-trueforge.mjs"]);
+    }
+  }, 60_000).unref();
+}
+
 
 let mc = new MissionControl({ logPath: null });
 
@@ -103,6 +179,22 @@ const server = http.createServer(async (req, res) => {
     return json(res, 202, { started: true, note: "stream /api/events for progress" });
   }
 
+  if (req.method === "POST" && url.pathname === "/api/resume") {
+    try {
+      mc.resume().catch((err) => mc.recordStartupError(String(err.message ?? err)));
+    } catch (err) {
+      return json(res, 409, { error: err.message });
+    }
+    return json(res, 202, { resumed: true });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/auto-demo") {
+    const body = await readBody(req);
+    if (!body.apiKey) return json(res, 400, { error: "apiKey required" });
+    const r = AutoDemo.start(String(body.apiKey));
+    return json(res, r.started ? 202 : 409, r);
+  }
+
   if (req.method === "POST" && url.pathname === "/api/approve") {
     try {
       await mc.decide(true);
@@ -138,6 +230,7 @@ const server = http.createServer(async (req, res) => {
   res.end(readFileSync(abs));
 });
 
-server.listen(config.uiPort, () => {
+server.listen(config.uiPort, async () => {
   console.log(`SentinelForge incident console -> http://localhost:${config.uiPort}`);
+  supervise().catch((err) => console.error("[supervisor] fatal:", err));
 });
