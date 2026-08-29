@@ -137,8 +137,15 @@ Four independent layers (details: [docs/security-model.md](docs/security-model.m
 ## Tests
 
 ```bash
-.\\.venv\\Scripts\\python -m pytest tests   # unit + integration + scenario replay
+.\.venv\Scripts\python -m pytest tests   # unit + integration + scenario replay
+.\.venv\Scripts\python scripts\smoke_test.py   # tool registration + dataset spot-checks
+node scripts\test-preflight.mjs          # model preflight guidance
+node scripts\test-mcp-client.mjs         # MCP transport (202/SSE/tool errors)
 ```
+
+The Python suite covers the data layer, state machine and MCP server over real
+HTTP; the Node scripts cover the console's transport and preflight logic, which
+pytest never exercises.
 
 ## Limitations
 
@@ -182,6 +189,19 @@ with actionable guidance if the provider/model is misconfigured.
 Built during The Agent Harness Hackathon (TrueForge). AI coding assistants were
 used for implementation speed; the participant reviewed, understands, and can
 explain all submitted code.
+
+**Synthetic data authorship:** every file under `scenarios/powershell_c2_beaconing/`
+- the alert, Windows event log, DNS log, network flow log, process tree, IOC feed,
+threat-intel verdicts, expected-findings ground truth, and the suspicious
+`win_update.ps1` script - was written by the participant as a realistic-but-fake
+incident package. Destinations use RFC-2606 `.example` domains and TEST-NET IP
+ranges, and the script's decoded payload is a literal `SYNTHETIC-DEMO-PAYLOAD`
+marker, so no real host, network, or code is touched. The unit test
+`test_no_real_internet_hosts_in_dataset` enforces this; the scenario-replay
+test `tests/scenario/test_replay.py` re-derives the findings from the dataset
+and asserts they match `expected_findings.json` (the demo is deterministic and
+tamper-evident). The agent itself still runs every step for real against this
+controlled data.
 
 ## License
 

@@ -19,6 +19,180 @@ import {
 
 const EVENTS_LOG = path.join(REPO_ROOT, "state", "ui-events.jsonl");
 
+/**
+ * Derive the compact judge-facing report fields (headline, verdict_line,
+ * top_findings, host, account, c2, beacon, persistence, evidence) from the
+ * verbose final_report when the model didn't fill them in. This keeps the
+ * UI's top-of-page summary meaningful even for older prompt versions that
+ * only passed executive_summary and conclusion.
+ */
+function backfillCompactReport(report) {
+  if (!report || typeof report !== "object") return report;
+  const out = { ...report };
+  const risk = out.risk || {};
+  const findings = Array.isArray(out.findings) ? out.findings : [];
+  const evidence = Array.isArray(out.evidence) ? out.evidence : [];
+  const iocs = Array.isArray(out.iocs) ? out.iocs : [];
+  const alert = out.alert || {};
+  const score = risk.score;
+  const severity = (risk.severity || "PENDING").toUpperCase();
+  const scoreText = (score != null) ? `${score}/100` : "—";
+
+  // Verdict line + headline
+  if (!out.verdict_line) out.verdict_line = `${severity} — ${scoreText}`;
+  if (!out.headline) {
+    out.headline = score != null && score >= 70
+      ? `CONFIRMED ${severity} — containment recommended`
+      : `${severity} — review recommended`;
+  }
+
+  // Recommended action label
+  if (!out.recommended_action_label) {
+    const ra = (out.recommended_action || "monitor").toUpperCase();
+    out.recommended_action_label = ra === "ISOLATE_ENDPOINT" ? "ISOLATE ENDPOINT" : (ra || "NO ACTION");
+  }
+
+  // Host / account from alert + findings text
+  if (!out.host) out.host = alert.hostname || "";
+  if (!out.account) {
+    // Look in summary, conclusion, and all findings for service-style accounts
+    const haystack = [
+      out.executive_summary || "",
+      out.conclusion || "",
+      ...findings.map(f => (f.finding || "").toString()),
+    ].join(" ");
+    let m = haystack.match(/\b(?:[A-Z][\w-]{1,12}\\)?(svc_\w+|\w+_(?:backup|admin|service))\b/);
+    if (m) out.account = m[1];
+    if (!out.account) {
+      m = haystack.match(/\b([A-Z]{2,12}\\[A-Za-z][\w.-]{2,})\b/);
+      if (m) out.account = m[1];
+    }
+  }
+
+  // C2 destination (IP / domain) — search across the whole report
+  if (!out.c2) {
+    // Prefer the IP/domain mentioned in a beacon_pattern or threat_intel_match
+    // finding, since those are the real C2 destinations (not DNS resolution IPs).
+    const beaconOrTI = findings.filter(f =>
+      f.category === "beacon_pattern" || f.category === "threat_intel_match"
+    );
+    const haystacks = [
+      ...beaconOrTI.map(f => (f.finding || "").toString()),
+      out.executive_summary || "",
+      out.conclusion || "",
+      ...findings.map(f => (f.finding || "").toString()),
+    ];
+    let found = null;
+    for (const text of haystacks) {
+      const ipMatch = text.match(/\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b/);
+      if (ipMatch) { found = ipMatch[1]; break; }
+    }
+    if (!found) {
+      for (const text of haystacks) {
+        const domMatch = text.match(/\b([a-z0-9][a-z0-9-]+-[a-z0-9-]+\.[a-z]{2,})\b/i);
+        if (domMatch) { found = domMatch[1]; break; }
+      }
+    }
+    out.c2 = found || "—";
+  }
+
+  // Beacon pattern
+  if (!out.beacon) {
+    const beaconFinding = findings.find(f => f.category === "beacon_pattern");
+    if (beaconFinding) {
+      const text = (beaconFinding.finding || "").toString();
+      // Prefer "every Ns", "N-second", "N second interval/cadence", or "N gaps"
+      let m = text.match(/every\s+(\d+)\s*s(?:econds?)?/i)
+            || text.match(/(\d+)\s*[-\s]*second\s+(?:interval|cadence|gaps?|beacon)/i)
+            || text.match(/cadence[:\s]+(\d+)\s*s/i);
+      if (m) {
+        out.beacon = `every ${m[1]}s`;
+      } else {
+        // Fall back to the largest "Ns" that's not "sampled" / "sandbox" / "seconds total"
+        const all = text.match(/\b(\d+)\s*s\b/g) || [];
+        const candidates = all
+          .map(s => parseInt(s))
+          .filter(n => n >= 2 && n <= 600)
+          .sort((a, b) => b - a);
+        if (candidates.length) out.beacon = `every ${candidates[0]}s`;
+        else out.beacon = "periodic";
+      }
+    }
+  }
+
+  // Persistence
+  if (!out.persistence) {
+    // Try to find a registry key in any finding (cap the captured path length)
+    for (const f of findings) {
+      const text = (f.finding || "").toString();
+      const m = text.match(/\b(HK(?:CU|LM|CR|U|CC)(?:\\[A-Za-z0-9_\-.()]+){2,6})(?:\b|,|\.|\s|$)/);
+      if (m) {
+        // Truncate to a clean key without trailing prose
+        let key = m[1].trim();
+        if (key.length > 80) key = key.split(/[,\s]/)[0];
+        out.persistence = key;
+        break;
+      }
+    }
+    // Try Scheduled Task name
+    if (!out.persistence) {
+      for (const f of findings) {
+        const text = (f.finding || "").toString();
+        const m = text.match(/\bScheduled\s+Task\s+[`"']?([A-Za-z0-9_.-]+)/i)
+                || text.match(/\bTask\s+[`"']?([A-Za-z0-9_.-]+)[`"']?/i);
+        if (m) { out.persistence = `Scheduled Task \\${m[1]}`; break; }
+      }
+    }
+    // Try service name
+    if (!out.persistence) {
+      for (const f of findings) {
+        const text = (f.finding || "").toString();
+        const m = text.match(/\b(?:Service|sc create)\s+[`"']?([A-Za-z0-9_.-]{3,})[`"']?/i);
+        if (m) { out.persistence = `Service: ${m[1]}`; break; }
+      }
+    }
+    // Fall back to a descriptive label
+    if (!out.persistence) {
+      for (const f of findings) {
+        const text = (f.finding || "").toLowerCase();
+        if (text.includes("run-key") || text.includes("run key")) {
+          out.persistence = "Run-key (autorun)"; break;
+        }
+        if (text.includes("persistence") || text.includes("persist ")) {
+          out.persistence = "Persistence mechanism"; break;
+        }
+      }
+    }
+    if (!out.persistence) out.persistence = "—";
+  }
+
+  // Top findings (max 6 short bullets)
+  if (!Array.isArray(out.top_findings) || out.top_findings.length === 0) {
+    const priority = ["beacon_pattern", "encoded_command", "powershell_execution",
+                      "suspicious_artifact", "threat_intel_match", "suspicious_dns"];
+    const seen = new Set();
+    const labels = {
+      beacon_pattern: "C2 beacon pattern",
+      encoded_command: "Encoded PowerShell",
+      powershell_execution: "Suspicious PowerShell execution",
+      suspicious_artifact: "Suspicious on-disk artifact",
+      threat_intel_match: "Threat-intel match",
+      suspicious_dns: "Suspicious DNS",
+    };
+    const ordered = priority
+      .map(cat => findings.find(f => f.category === cat))
+      .filter(f => f && !seen.has(f.finding) && seen.add(f.finding));
+    out.top_findings = ordered.slice(0, 6).map(f => labels[f.category] || f.category);
+  }
+
+  // User-facing evidence labels (max 6)
+  if (!Array.isArray(out.evidence) || out.evidence.length === 0) {
+    out.evidence = (out.top_findings || []).slice(0, 6);
+  }
+
+  return out;
+}
+
 // Provider hiccups worth an automatic resume (free-tier 503/overload/429,
 // plus transient network failures between the harness and the provider).
 const TRANSIENT_ERROR_RE = /\b(429|500|502|503|504|529)\b|high demand|overloaded|rate.?limit|temporarily|try again later|connect timeout|connection (error|refused|reset|closed)|econn(reset|refused|aborted)|etimedout|enotfound|socket hang up|fetch failed|network (error|timeout)/i;
@@ -49,13 +223,12 @@ export class MissionControl {
     this.subscribers = new Set();
     this.incidentId = null;
     this.finalReport = null;
+    this.riskAssessment = null;
   }
 
   #emit(evt) {
     this.lastEventAt = Date.now();
-    const runSeq = this.#runSeq;
     const record = { seq: this.events.length + 1, at: new Date().toISOString(), ...evt };
-    if (runSeq !== this.#runSeq) return record; // stale writer from a pre-reset run
     this.events.push(record);
     if (this.logPath) {
       try {
@@ -257,6 +430,7 @@ export class MissionControl {
   }
 
   async #runTurn(input, attempt = 0) {
+    const runSeq = this.#runSeq;
     this.#eventsIndex = new Map();
     this.#turnErrorMessage = null;
     const stream = await this.client.sessions.createTurnStream(this.sessionId, { input });
@@ -293,6 +467,7 @@ export class MissionControl {
           text: `Provider hiccup (${this.#turnErrorMessage.slice(0, 90)}) - resuming in ${Math.round(delay / 1000)}s (attempt ${attempt + 1}/${MAX_TRANSIENT_RETRIES}); incident context is preserved.`,
         });
         await new Promise((resolve) => setTimeout(resolve, delay));
+        if (runSeq !== this.#runSeq) return; // console was reset while we waited
         return this.#runTurn(
           [{ type: "user.message", content: "Continue the investigation from exactly where you stopped." }],
           attempt + 1,
@@ -425,8 +600,12 @@ export class MissionControl {
             risk: parsed,
           });
         }
-        if (parsed?.final_report) {
-          this.finalReport = parsed.final_report ?? parsed;
+        // finalize_incident_report returns the report FLAT (no wrapper key).
+        // Only looking for parsed.final_report meant the run never reached
+        // CLOSED, so the CLI and auto-demo waited forever for a finished run.
+        const report = parsed?.final_report ?? (isFinalReport(parsed) ? parsed : null);
+        if (report) {
+          this.finalReport = backfillCompactReport(report);
           this.status = "CLOSED";
         }
         break;
@@ -473,6 +652,17 @@ export class MissionControl {
 
 function truncate(s, n) {
   return s.length <= n ? s : s.slice(0, n) + "...";
+}
+
+/** Recognize a finalize_incident_report payload by its required fields. */
+function isFinalReport(payload) {
+  return Boolean(
+    payload &&
+      typeof payload === "object" &&
+      payload.incident_id &&
+      typeof payload.executive_summary === "string" &&
+      typeof payload.conclusion === "string",
+  );
 }
 
 /** Honor the provider's own "Please retry in Ns" hint when present (Gemini sends it). */

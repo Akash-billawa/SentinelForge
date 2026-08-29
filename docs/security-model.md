@@ -47,6 +47,18 @@ A DENY at the checkpoint means the tool call never executes (TrueForge blocks
 it). The Commander records the decision with `record_human_decision("DENY")`
 and policy P7 forbids automatic retries. Tests cover both paths.
 
+## Data authorship
+
+**Every file under `scenarios/powershell_c2_beaconing/` was authored by the participant**
+for this submission (alert, Windows event log, DNS log, network flow log, process
+tree, IOC feed, threat-intel verdicts, expected-findings ground truth, and the
+suspicious `win_update.ps1` sample). The threat-intel feed (synthetic-threat-feed)
+is part of the scenario data. A test (`test_no_real_internet_hosts_in_dataset`)
+guards that no real-internet host accidentally leaks into the dataset; the
+scenario-replay test (`tests/scenario/test_replay.py`) re-derives the findings
+from the dataset and asserts they match `expected_findings.json`, making the
+demo deterministic and tamper-evident.
+
 ## What is explicitly out of scope
 
 Real EDR/SOAR integrations, offensive tooling, dynamic malware execution,

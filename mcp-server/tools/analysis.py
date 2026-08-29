@@ -4,6 +4,7 @@ evidence fusion and transparent risk scoring."""
 from __future__ import annotations
 
 import sys
+from datetime import datetime
 from itertools import pairwise
 from pathlib import Path
 from statistics import mean, pstdev
@@ -35,6 +36,24 @@ CATEGORY_SIGNAL = {
 }
 
 VALID_CATEGORIES = sorted(CATEGORY_SIGNAL)
+
+
+def parse_timestamp(ts: str) -> datetime:
+    """Parse an ISO-8601 timestamp (Python 3.11+ accepts the trailing 'Z')."""
+    return datetime.fromisoformat(ts)
+
+
+def gap_seconds(flows: list[dict]) -> list[int]:
+    """Whole-second gaps between consecutive flows, which must be time-sorted.
+
+    Uses real datetime arithmetic. Slicing minutes/seconds out of the string
+    discarded the hour and date, so a 15s gap spanning 10:59:50 -> 11:00:05
+    measured as 0s and a periodic beacon looked irregular (or vice versa).
+    """
+    return [
+        int((parse_timestamp(b["timestamp"]) - parse_timestamp(a["timestamp"])).total_seconds())
+        for a, b in pairwise(flows)
+    ]
 
 
 @mcp.tool()
@@ -87,11 +106,7 @@ def analyze_network_pattern(dst_ip: str, host: str = "WKS-042", scenario: str = 
             "evidence_refs": [f["evidence_ref"] for f in flows],
         }
     flows = sorted(flows, key=lambda f: f["timestamp"])
-    gaps = []
-    for a, b in pairwise(flows):
-        ta = int(a["timestamp"][14:16]) * 60 + int(a["timestamp"][17:19])
-        tb = int(b["timestamp"][14:16]) * 60 + int(b["timestamp"][17:19])
-        gaps.append(max(tb - ta, 0))
+    gaps = gap_seconds(flows)
     sent_sizes = [f["bytes_sent"] for f in flows]
     gap_cv = (pstdev(gaps) / mean(gaps)) if gaps and mean(gaps) else 0.0
     size_spread = max(sent_sizes) - min(sent_sizes)
@@ -129,10 +144,15 @@ def create_incident_session(scenario: str = "powershell_c2_beaconing") -> dict:
     """Create (or resume) the persistent incident session for an alert.
 
     Returns the full IncidentSession record: phase, findings, evidence refs,
-    IOCs, risk, approval and response state. Call this first.
+    IOCs, risk, approval and response state. Call this first. Safe to call
+    twice: an existing session is RESUMED rather than rejected, so a retried
+    turn does not dead-end the investigation.
     """
-    record = STORE.create(scenario)
-    return record
+    incident_id = ScenarioStore(scenario).alert()["incident_id"]
+    try:
+        return STORE.get(incident_id)
+    except SentinelForgeError:
+        return STORE.create(scenario)
 
 
 @mcp.tool()
@@ -182,11 +202,30 @@ def correlate_evidence(incident_id: str) -> dict:
 
     Groups findings by category, counts independent agent sources per category,
     lists every cited evidence ref and derives the transparent risk-signal set.
+
+    Phase transition: this is the canonical EVIDENCE_READY -> ASSESSMENT_READY
+    transition. The incident must be in EVIDENCE_READY (or already
+    ASSESSMENT_READY, in which case this is a no-op re-correlation). If the
+    incident is still in INVESTIGATING or NEW, refuse: investigation has not
+    been marked complete yet. The user-facing error names the exact tool they
+    need to call next so the agent can self-correct.
     """
     record = STORE.get(incident_id)
     findings = record["findings"]
     if not findings:
         raise SentinelForgeError("no findings recorded yet; investigate before correlating")
+    current = record["current_phase"]
+    if current not in ("EVIDENCE_READY", "ASSESSMENT_READY"):
+        if current in ("NEW", "INVESTIGATING"):
+            raise SentinelForgeError(
+                f"phase is {current}; call mark_investigation_complete first to "
+                "transition to EVIDENCE_READY, then call correlate_evidence to "
+                "transition to ASSESSMENT_READY"
+            )
+        raise SentinelForgeError(
+            f"phase is {current}; correlate_evidence only operates on "
+            "EVIDENCE_READY or ASSESSMENT_READY incidents"
+        )
     by_category: dict[str, list[dict]] = {}
     signals: list[str] = []
     for f in findings:
@@ -210,16 +249,17 @@ def correlate_evidence(incident_id: str) -> dict:
         "evidence_refs_total": len(all_evidence),
         "risk_signals": signals,
         "risk_signal_catalog": RISK_WEIGHTS,
+        "current_phase": "ASSESSMENT_READY",
+        "phase_transition": f"{current} -> ASSESSMENT_READY" if current != "ASSESSMENT_READY" else "no change",
     }
 
     def mutate(rec):
-        rec["current_phase"] = "ASSESSMENT_READY" if rec["current_phase"] in (
-            "EVIDENCE_READY",
-            "ASSESSMENT_READY",
-        ) else rec["current_phase"]
+        if rec["current_phase"] == "EVIDENCE_READY":
+            rec["current_phase"] = "ASSESSMENT_READY"
+        # ASSESSMENT_READY is idempotent; re-correlation does not regress.
 
     STORE.update(incident_id, mutate)
-    STORE.audit(incident_id, "EVIDENCE_CORRELATED", {"signals": signals})
+    STORE.audit(incident_id, "EVIDENCE_CORRELATED", {"signals": signals, "previous_phase": current})
     return summary
 
 
@@ -245,8 +285,15 @@ def calculate_risk_score(incident_id: str, extra_signals: list[str] | None = Non
         **risk,
         "confidence": round(sum(confidences) / len(confidences), 3) if confidences else None,
         "recommended_action": "isolate_endpoint" if risk["score"] >= 70 else "monitor",
-        "rationale": "score reaches the containment threshold (>=70); "
-        "recommend isolating the endpoint pending human approval",
+        # Must reflect the ACTUAL branch: the old text always claimed the
+        # threshold was reached, even for a LOW score recommending monitoring.
+        "rationale": (
+            f"score {risk['score']} reaches the containment threshold (>=70); "
+            "recommend isolating the endpoint pending human approval"
+            if risk["score"] >= 70
+            else f"score {risk['score']} is below the containment threshold (>=70); "
+            "continue monitoring - no consequential action is justified"
+        ),
     }
 
     def mutate(rec):

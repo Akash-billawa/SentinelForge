@@ -36,9 +36,10 @@ def repo_root() -> Path:
 
 
 def utc_now() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.") + (
-        f"{datetime.now(UTC).microsecond // 1000:03d}Z"
-    )
+    # Single clock read: sampling now() twice could straddle a second boundary
+    # and emit a timestamp whose milliseconds belong to a different second.
+    now = datetime.now(UTC)
+    return now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z"
 
 
 class SentinelForgeError(Exception):
@@ -66,11 +67,17 @@ def _jsonl(path: Path) -> list[dict[str, Any]]:
     return records
 
 
-def _in_range(ts: str, time_range: tuple[str, str] | None) -> bool:
+def _in_range(ts: str, time_range: tuple[str | None, str | None] | None) -> bool:
+    """Inclusive bounds check where either end may be None (unbounded).
+
+    The log/DNS/flow tools build the range from optional time_start/time_end
+    arguments, so a half-open range is a normal request - comparing against
+    None used to raise TypeError and fail the tool call.
+    """
     if not time_range:
         return True
     start, end = time_range
-    return bool(start <= ts <= end)
+    return (not start or ts >= start) and (not end or ts <= end)
 
 
 class ScenarioStore:
@@ -97,7 +104,7 @@ class ScenarioStore:
         self,
         query: str | None = None,
         host: str | None = None,
-        time_range: tuple[str, str] | None = None,
+        time_range: tuple[str | None, str | None] | None = None,
     ) -> list[dict[str, Any]]:
         out = []
         for rec in _jsonl(self.dir / "windows_events.jsonl"):
@@ -114,7 +121,7 @@ class ScenarioStore:
         return out
 
     def dns_logs(
-        self, host: str | None = None, time_range: tuple[str, str] | None = None
+        self, host: str | None = None, time_range: tuple[str | None, str | None] | None = None
     ) -> list[dict[str, Any]]:
         out = []
         for rec in _jsonl(self.dir / "dns.jsonl"):
@@ -126,7 +133,7 @@ class ScenarioStore:
         return out
 
     def network_flows(
-        self, host: str | None = None, time_range: tuple[str, str] | None = None
+        self, host: str | None = None, time_range: tuple[str | None, str | None] | None = None
     ) -> list[dict[str, Any]]:
         out = []
         for rec in _jsonl(self.dir / "network_flows.jsonl"):
@@ -237,11 +244,20 @@ RISK_WEIGHTS = {
 
 
 def calculate_risk(signals: list[str]) -> dict[str, Any]:
-    """Deterministic, explainable score. Never invented by the model."""
-    matched = [s for s in signals if s in RISK_WEIGHTS]
-    unknown = [s for s in signals if s not in RISK_WEIGHTS]
-    score = sum(RISK_WEIGHTS[s] for s in matched)
-    score = min(score, 100)
+    """Deterministic, explainable score. Never invented by the model.
+
+    Each distinct signal scores ONCE. Several findings in the same category are
+    corroboration, not additional risk: counting them repeatedly let a single
+    category (e.g. five PowerShell findings) reach 100/CRITICAL on its own and
+    silently cross the containment threshold.
+    """
+    matched: list[str] = []
+    unknown: list[str] = []
+    for signal in signals:
+        bucket = matched if signal in RISK_WEIGHTS else unknown
+        if signal not in bucket:
+            bucket.append(signal)
+    score = min(sum(RISK_WEIGHTS[s] for s in matched), 100)
     if score >= 85:
         severity = "CRITICAL"
     elif score >= 60:
@@ -257,7 +273,7 @@ def calculate_risk(signals: list[str]) -> dict[str, Any]:
         "severity": severity,
         "signals": breakdown,
         "ignored_signals": unknown,
-        "formula": "sum(signal weights), capped at 100; weights are fixed policy",
+        "formula": "sum of DISTINCT signal weights, capped at 100; weights are fixed policy",
     }
 
 
@@ -323,18 +339,18 @@ class IncidentStore:
             return record
 
     def reset(self, incident_id: str) -> dict[str, Any]:
-        """Delete stored incident so the demo can be replayed deterministically."""
+        """Delete stored incident so the demo can be replayed deterministically.
+
+        Idempotent: resetting a scenario that was never run is a no-op. The
+        console resets before every START, so raising here broke the very first
+        investigation on a clean checkout.
+        """
         with self._lock:
             path = self._path(incident_id)
             existed = path.exists()
-            audit = self._audit_path(incident_id)
-            if audit.exists():
-                audit.unlink()
-            if existed:
-                path.unlink()
-        if not existed:
-            raise SentinelForgeError(f"incident {incident_id} does not exist")
-        return {"reset": True, "incident_id": incident_id}
+            self._audit_path(incident_id).unlink(missing_ok=True)
+            path.unlink(missing_ok=True)
+        return {"reset": True, "incident_id": incident_id, "existed": existed}
 
     def get(self, incident_id: str) -> dict[str, Any]:
         path = self._path(incident_id)
@@ -393,8 +409,6 @@ class IncidentStore:
             )
             known = set(rec["evidence_refs"])
             rec["evidence_refs"] = sorted(known | set(evidence_refs))
-            if category == "iocs":
-                pass
 
         updated = self.update(incident_id, mutate)
         self.audit(
@@ -433,13 +447,23 @@ class IncidentStore:
             confidences = [f["confidence"] for f in rec["findings"]] or [0.0]
             rec["confidence"] = round(sum(confidences) / len(confidences), 3)
             rec["recommended_action"] = recommended_action
-            if rec["current_phase"] in ("INVESTIGATING", "EVIDENCE_READY"):
+            # set_assessment only operates on fully-correlated incidents.
+            # The workflow that reaches this point is:
+            #   mark_investigation_complete -> correlate_evidence -> set_assessment
+            # correlate_evidence advances EVIDENCE_READY -> ASSESSMENT_READY, so
+            # the precondition is ASSESSMENT_READY. Earlier states mean the
+            # agent skipped correlate_evidence.
+            if rec["current_phase"] in ("NEW", "INVESTIGATING"):
                 raise InvalidTransition(
                     f"cannot assess while phase={rec['current_phase']}; "
-                    "transition to EVIDENCE_READY first"
+                    "call mark_investigation_complete and correlate_evidence first"
                 )
-            if rec["current_phase"] != "ASSESSMENT_READY":
-                rec["current_phase"] = "ASSESSMENT_READY"
+            if rec["current_phase"] == "EVIDENCE_READY":
+                raise InvalidTransition(
+                    f"phase is EVIDENCE_READY; call correlate_evidence first to "
+                    "transition to ASSESSMENT_READY"
+                )
+            # ASSESSMENT_READY is the expected state; re-setting is idempotent.
 
         updated = self.update(incident_id, mutate)
         self.audit(

@@ -34,7 +34,7 @@ export const config = {
   model: process.env.SENTINELFORGE_MODEL ?? "google-gemini/gemini-3-6-flash",
   mcpUrl:
     process.env.SENTINELFORGE_MCP_URL ??
-    `http://127.0.0.1:${process.env.SENTINELFORGE_MCP_PORT ?? 8765}/mcp`,
+    `http://localhost:${process.env.SENTINELFORGE_MCP_PORT ?? 8765}/mcp`,
   uiPort: Number(process.env.SENTINELFORGE_UI_PORT ?? 8090),
   scenario: process.env.SENTINELFORGE_SCENARIO ?? "powershell_c2_beaconing",
 };
@@ -124,7 +124,7 @@ export async function preflightModel(baseUrl, model) {
     const res = await fetch(`${baseUrl.replace(/\/$/, "")}/api/v1/models`);
     if (!res.ok) return { ok: true, note: `models endpoint HTTP ${res.status}; skipping check` };
     payload = await res.json();
-  } catch (err) {
+  } catch {
     return { ok: false, reason: `TrueForge is not reachable at ${baseUrl}. Start it with: node scripts/run-trueforge.mjs` };
   }
   const models = Array.isArray(payload?.data) ? payload.data : [];
@@ -146,7 +146,7 @@ export async function preflightModel(baseUrl, model) {
       ok: false,
       reason:
         `Configured model "${model}" was not found among TrueForge models [${ids.join(", ")}]. ` +
-        `Fix: set SENTINELFORGE_MODEL to one of those ids in .env (free Gemini keys must use google/gemini-3.6-flash - pro models have zero free-tier quota), or enable billing for "${model}".`,
+        `Fix: set SENTINELFORGE_MODEL to one of those ids in .env (free Gemini keys must use google-gemini/gemini-3-6-flash - pro models have zero free-tier quota), or enable billing for "${model}".`,
     };
   }
   return { ok: true, models: ids };

@@ -10,6 +10,6 @@
     "install:sdk": "npm i @truefoundry/trueforge-sdk"
   },
   "dependencies": {
-    "@truefoundry/trueforge-sdk": "^1.0.0"
+    "@truefoundry/trueforge-sdk": "^0.1.3"
   }
 }

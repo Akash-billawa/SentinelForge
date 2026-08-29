@@ -91,8 +91,9 @@ async function main() {
     let decision = autoDecision;
     if (!decision) {
       const rl = createInterface({ input: process.stdin, output: process.stdout });
-      decision = await rl.ask(bold("APPROVE or DENY containment? "));
-      await rl.close();
+      // readline/promises exposes question(), not ask().
+      decision = await rl.question(bold("APPROVE or DENY containment? "));
+      rl.close();
       decision = decision.trim().toUpperCase().startsWith("A") ? "approve" : "deny";
     }
     try {

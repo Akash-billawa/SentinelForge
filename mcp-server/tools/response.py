@@ -22,23 +22,34 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import store
 from mcp_app import mcp
-from store import STATE_DIR, STORE, InvalidTransition, SentinelForgeError, utc_now
+from store import STORE, InvalidTransition, SentinelForgeError, utc_now
 
-_ENDPOINTS_PATH = STATE_DIR / "endpoints.json"
 _ENDPOINT_LOCK = threading.Lock()
 _CONSEQUENTIAL_ACTIONS = ("isolate_endpoint",)
 
 
+def _endpoints_path():
+    """Resolve the mock registry path at CALL time.
+
+    Binding it at import time ignored the STATE_DIR that tests patch, so test
+    runs mutated the real state/endpoints.json instead of their temp dir.
+    """
+    return store.STATE_DIR / "endpoints.json"
+
+
 def _load_endpoints() -> dict:
-    if _ENDPOINTS_PATH.exists():
-        return json.loads(_ENDPOINTS_PATH.read_text(encoding="utf-8"))
+    path = _endpoints_path()
+    if path.exists():
+        return json.loads(path.read_text(encoding="utf-8"))
     return {}
 
 
 def _save_endpoints(data: dict) -> None:
-    _ENDPOINTS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _ENDPOINTS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    path = _endpoints_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
 @mcp.tool()
@@ -143,7 +154,7 @@ def record_human_decision(incident_id: str, decision: str, decided_by: str = "hu
     Use this when the harness blocked the consequential tool call because the
     human DENIED the checkpoint - it closes the loop in the incident record.
     """
-    updated = STORE.resolve_approval(incident_id, decision.upper(), decided_by=decided_by)
+    STORE.resolve_approval(incident_id, decision.upper(), decided_by=decided_by)
 
     def mutate(rec):
         if decision.upper() == "DENY":
@@ -169,12 +180,59 @@ def finalize_incident_report(
     incident_id: str,
     executive_summary: str,
     conclusion: str,
+    headline: str = "",
+    verdict_line: str = "",
+    top_findings: list[str] | None = None,
+    recommended_action_label: str = "",
+    host: str = "",
+    account: str = "",
+    c2: str = "",
+    beacon: str = "",
+    persistence: str = "",
+    evidence: list[str] | None = None,
 ) -> dict:
-    """Close out the incident: freeze findings, evidence, risk and response into the final report."""
+    """Close out the incident: freeze findings, evidence, risk and response into the final report.
+
+    Compact judge-facing fields (headline, verdict_line, top_findings,
+    recommended_action_label, host, account, c2, beacon, persistence, evidence)
+    populate the top-of-page summary the human sees first. Detailed fields
+    (executive_summary, conclusion, full findings list, full evidence refs) sit
+    underneath for the SOC lead who wants the audit trail.
+    """
     record = STORE.get(incident_id)
+    risk = record.get("risk") or {}
+    if not headline:
+        sev = (risk.get("severity") or "PENDING").upper()
+        score = risk.get("score")
+        score_text = f"{score}/100" if score is not None else "—"
+        headline = f"{sev} — {score_text}"
+    if not verdict_line:
+        sev = (risk.get("severity") or "PENDING").upper()
+        score = risk.get("score")
+        score_text = f"{score}/100" if score is not None else "—"
+        verdict_line = f"{sev} — {score_text}"
+    if not recommended_action_label:
+        ra = (record.get("recommended_action") or "monitor").upper()
+        label_map = {
+            "ISOLATE_ENDPOINT": "ISOLATE ENDPOINT",
+            "MONITOR": "MONITOR",
+        }
+        recommended_action_label = label_map.get(ra, ra or "NO ACTION")
     report = {
         "incident_id": incident_id,
         "generated_at": utc_now(),
+        # Compact top-of-page fields
+        "headline": headline,
+        "verdict_line": verdict_line,
+        "top_findings": top_findings or [],
+        "recommended_action_label": recommended_action_label,
+        "host": host or (record.get("alert") or {}).get("hostname", ""),
+        "account": account,
+        "c2": c2,
+        "beacon": beacon,
+        "persistence": persistence,
+        "evidence": evidence or [],
+        # Detailed fields
         "executive_summary": executive_summary,
         "conclusion": conclusion,
         "alert": record["alert"],

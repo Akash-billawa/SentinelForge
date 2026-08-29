@@ -6,9 +6,18 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "mcp-server"))
-sys.path.insert(0, str(ROOT))
+for _p in (ROOT / "mcp-server", ROOT / "sandbox", ROOT):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
+# Importing the tool modules is what REGISTERS the handlers - without them the
+# smoke test reported "TOTAL: 0" while claiming every tool was verified.
+import tools.alerts
+import tools.analysis
+import tools.intelligence
+import tools.logs
+import tools.network
+import tools.response  # noqa: F401
 from mcp_app import mcp
 
 
@@ -17,6 +26,8 @@ async def main() -> None:
     for t in tools:
         print(f"{t.name:38s} {len(t.description or ''):4d} chars")
     print("TOTAL:", len(tools))
+    assert tools, "no MCP tools registered"
+    assert all(t.description for t in tools), "every tool needs a description for the agent"
 
     # functional spot-checks against the synthetic dataset
     from store import ScenarioStore, calculate_risk
