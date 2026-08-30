@@ -1,158 +1,166 @@
 # SentinelForge
 
-**AI SOC Incident Commander for safe, evidence-driven response.**
-*Investigate autonomously. Act only with permission.*
+SentinelForge is an AI SOC Incident Commander for evidence-driven security
+incident response. It investigates alerts across logs, process trees, DNS,
+network flows, threat intelligence, and suspicious PowerShell artifacts, then
+produces a traceable risk assessment and incident report.
 
-SentinelForge receives a security alert, opens an incident session, and
-delegates the investigation to specialist subagents (Log, Network, Malware).
-They collect evidence through real MCP tool calls against a deterministic
-synthetic dataset, a sandboxed static analyzer decodes the suspicious
-artifact, the Commander fuses and cross-checks findings, produces transparent
-risk scoring — and then **stops**. Endpoint isolation is consequential, so the
-agent pauses at a human approval checkpoint. Only APPROVE lets the controlled
-containment execute; DENY closes the loop with no action taken.
+> Investigate autonomously. Act only with permission.
+
+This project was built for [The Agent Harness Hackathon](https://www.wemakedevs.org/hackathons/trueforge).
+The domain is cybersecurity, but the central problem is broadly useful:
+agents need real tools, safe execution, and a human stop before an irreversible
+action.
+
+## The problem
+
+SOC analysts receive more alerts than they can investigate manually. An alert
+is only a starting point: analysts still need to reconstruct the process chain,
+inspect DNS and flow behavior, analyze artifacts, correlate evidence, and
+decide how to respond.
+
+SentinelForge automates the investigation while keeping containment under
+human control. It is intended for SOC analysts, incident responders, and
+security engineering teams.
+
+## How it works
 
 ```text
-Security Alert → SentinelForge Agent → Autonomous Investigation
-      ↓ Subagents + MCP Tools + Sandbox
-Evidence Correlation → Risk / Confidence
-      ↓
-Human Approval Checkpoint  ──DENY──▶ No Action (recorded)
-      │ APPROVE
-      ▼
-Containment (mock endpoint) → Incident Report
+Security alert
+      |
+      v
+Commander agent --> Log investigator
+                --> Network investigator
+                --> Malware investigator
+      |
+      v
+Evidence correlation --> Transparent risk score
+      |
+      v
+Human approval checkpoint
+      | APPROVE                 | DENY
+      v                         v
+Mock endpoint isolation     No action; decision recorded
+      |
+      v
+Final incident report
 ```
 
-## What problem does it solve?
+The Commander discovers the answer through MCP tool calls; the scenario
+answers are not placed in its prompt. Each conclusion links to findings and
+stable evidence references. A persisted state machine prevents the agent from
+skipping investigation, authorization, or reporting steps.
 
-SOC analysts receive alerts faster than they can investigate them. An alert is
-only a starting signal: someone still has to pull logs, reconstruct the
-process tree, inspect DNS/flow behavior, decode artifacts, correlate evidence,
-and choose a response. Fully automating that last step is dangerous — an agent
-that can act on endpoints without control can make an incident worse.
-SentinelForge demonstrates the two-sided answer:
+## Hackathon requirements demonstrated
 
-> Investigation can be autonomous. Irreversible response remains human-controlled.
+- **Real tools:** a Python MCP server exposes logs, DNS, network flows, process
+  trees, IOCs, static artifact analysis, and a response registry.
+- **Subagents:** Log, Network, and Malware investigators work on bounded parts
+  of the investigation.
+- **Safe execution:** PowerShell samples are statically inspected and never
+  executed. The response target is a mock endpoint registry.
+- **Human control:** the agent pauses before `isolate_endpoint`; only an
+  explicit approval can continue containment.
+- **Session continuity:** one incident maps to one persisted session, including
+  findings, risk, response decisions, and an append-only audit trail.
+- **Open source and reproducible:** the included dataset is deterministic and
+  uses synthetic `.example` domains and TEST-NET IP ranges.
 
-## Architecture
+## Example result
 
-See [docs/architecture.md](docs/architecture.md). Short version:
+The included `powershell_c2_beaconing` scenario contains an unsigned,
+obfuscated PowerShell artifact with persistence and machine-precision HTTPS
+beaconing. SentinelForge correlates the independent evidence sources,
+calculates a transparent `100/100 CRITICAL` risk score, requests approval, and
+isolates only the mock endpoint after approval.
+
+See the [sample incident report](docs/sample-run/incident.json) and
+[audit trail](docs/sample-run/audit-trail.jsonl).
+
+## Project structure
 
 ```text
 sentinelforge/
-├── mcp-server/    Python MCP server (streamable-http): logs, DNS, flows,
-│                  process tree, IOCs, analysis tools + mock response registry
-├── sandbox/       Static PowerShell analyzer (never executes samples)
+├── mcp-server/    Python MCP server and security data tools
+├── sandbox/       Static PowerShell analyzer; never executes samples
 ├── scenarios/     Deterministic synthetic incident package
-├── agent/         Commander prompt, specialist prompts, policy, JSON schemas
-├── app/           Mission control: agent driver + web console
-└── tests/         Unit / integration (real MCP over HTTP) / scenario replay
+├── agent/         Commander and specialist prompts, policy, and schemas
+├── app/           Mission control CLI and web console
+└── tests/         Unit, integration, and scenario-replay tests
 ```
 
-## How do I run it?
+## Run locally
 
-Prerequisites: Python 3.11+, Node.js 22+, any OpenAI-compatible API key.
+Requirements: Python 3.11+, Node.js 22+, and an OpenAI-compatible model API
+key.
 
 ```bash
-# 1. Python deps
+# Install Python dependencies
 python -m venv .venv
-.\.venv\Scripts\pip install "mcp>=1.2.0" pytest httpx   # Windows
-# pip install "mcp>=1.2.0" pytest httpx                  # Linux/macOS
+.\\.venv\\Scripts\\pip install "mcp>=1.2.0" pytest httpx
 
-# 2. SentinelForge MCP server (terminal 1)
-.\.venv\Scripts\python mcp-server\server.py
-#   -> http://127.0.0.1:8765/mcp
+# Terminal 1: start the SentinelForge MCP server
+.\\.venv\\Scripts\\python mcp-server\\server.py
 
-# 3. Start the agent runtime (terminal 2) - works on Windows, macOS and Linux
-node scripts\run-trueforge.mjs        # node scripts/run-trueforge.mjs on *nix
-#   -> http://localhost:8790
-# In Settings -> Models add your provider/API key.
+# Terminal 2: start the TrueForge agent runtime
+node scripts\\run-trueforge.mjs
 
-# 4a. CLI demo (terminal 3)
-cd app && npm i @truefoundry/trueforge-sdk && node run-demo.mjs --approve
-
-# 4b. Web console instead
-cd app && node serve-ui.mjs   # open http://localhost:8090, click START INVESTIGATION
+# Terminal 3: run the CLI demo
+cd app
+npm install
+npm install @truefoundry/trueforge-sdk
+node run-demo.mjs --approve
 ```
 
-## How do I reproduce the demo?
-
-1. Start the three processes above.
-2. Web console: click **START INVESTIGATION**. Watch subagents spawn, MCP tool
-   calls stream, evidence refs accumulate.
-3. At `Risk >= 70` the Commander recommends isolation; the runtime pauses and
-   the console shows the checkpoint. Click **APPROVE** (mock endpoint becomes
-   ISOLATED, report finalizes) or **DENY** (no action, decision recorded).
-4. Reset & replay anytime: `reset_demo` tool or restart the console.
-
-CLI equivalent: `node run-demo.mjs` prompts at the checkpoint;
-`--approve` / `--deny` automate it for CI.
-
-## What safety controls exist?
-
-Four independent layers (details: [docs/security-model.md](docs/security-model.md)):
-
-1. Prompt-level decision policy (`agent/policies/decision_policy.md`).
-2. Runtime-enforced human checkpoint on the single consequential tool.
-3. Application guard: the MCP tool refuses isolation unless the incident shows
-   a raised authorization request approved by the checkpoint.
-4. Demo-safety: all data synthetic (RFC-2606 `.example` domains, TEST-NET IPs),
-   the analyzer never executes artifacts, and `isolate_endpoint` mutates only a
-   mock endpoint registry. Idempotent by design.
+For the web console, run `node serve-ui.mjs` from `app` and open
+`http://localhost:8090`. At the approval checkpoint, choose **APPROVE** to
+contain the mock endpoint or **DENY** to close the incident without action.
 
 ## Tests
 
 ```bash
-.\.venv\Scripts\python -m pytest tests   # unit + integration + scenario replay
-.\.venv\Scripts\python scripts\smoke_test.py   # tool registration + dataset spot-checks
-node scripts\test-preflight.mjs          # model preflight guidance
-node scripts\test-mcp-client.mjs         # MCP transport (202/SSE/tool errors)
+.\\.venv\\Scripts\\python -m pytest tests
+.\\.venv\\Scripts\\python scripts\\smoke_test.py
+node scripts\\test-preflight.mjs
+node scripts\\test-mcp-client.mjs
 ```
 
-The Python suite covers the data layer, state machine and MCP server over real
-HTTP; the Node scripts cover the console's transport and preflight logic, which
-pytest never exercises.
+The Python tests cover the state machine, data layer, MCP server over HTTP, and
+scenario replay. The Node tests cover the console transport and model
+preflight behavior.
 
-## Limitations
+## Qodo Code Review Evidence
 
-- One incident scenario (`powershell_c2_beaconing`) by design: depth over breadth.
-- Containment targets a mock registry, deliberately - this is a control-loop demo.
-- Risk weights are fixed public policy, tuned for the demo scenario only.
-- The sandbox analyzer is static; dynamic execution is intentionally out of scope.
-- On Windows, TrueForge's local sandbox fallback is unavailable (upstream
-  supports macOS/Linux only). This does not affect the demo: artifact analysis
-  is static and runs inside our MCP server, not in a harness sandbox.
+Qodo was used to review substantive implementation changes for edge cases in
+the incident state machine, authorization flow, MCP boundaries, error
+handling, and test coverage. Findings were used to improve validation,
+idempotency, and scenario tests.
 
-## Troubleshooting (Windows)
+The hackathon requires a representative merged pull request with the Qodo
+review, decisions, remediation, and follow-up review. The repository's review
+history is available at [GitHub Pull Requests](https://github.com/Akash-billawa/SentinelForge/pulls).
+Add the final representative merged PR link here before submission.
 
-`npx @truefoundry/trueforge` fails on native Windows with
-`ERR_UNSUPPORTED_ESM_URL_SCHEME ... Received protocol 'c:'`. This is an upstream
-bug: kysely 0.29.5's `FileMigrationProvider` calls `await import("C:\\...")`,
-and Node's ESM loader requires `file://` URLs for absolute paths.
+## Demo
 
-`scripts/run-trueforge.mjs` works around it automatically - it installs
-TrueForge locally, applies the one-line `pathToFileURL()` fix to the bundled
-kysely copy (idempotent, correct on all platforms), and starts the server.
-Alternatives: WSL or Docker Compose from the upstream repository.
+The recommended three-minute flow is documented in
+[docs/demo-script.md](docs/demo-script.md).
+
+## Safety and limitations
+
+- All incident data is synthetic and safe to replay.
+- The analyzer is static; dynamic malware execution is intentionally out of
+  scope.
+- Containment changes only a mock endpoint registry.
+- Risk weights are fixed, transparent, and tuned to the included scenario.
+- The project currently focuses on one deep scenario:
+  `powershell_c2_beaconing`.
 
 ## Disclosure
 
-Built during The Agent Harness Hackathon. AI coding assistants were
-used for implementation speed; the participant reviewed, understands, and can
-explain all submitted code.
-
-**Synthetic data authorship:** every file under `scenarios/powershell_c2_beaconing/`
-- the alert, Windows event log, DNS log, network flow log, process tree, IOC feed,
-threat-intel verdicts, expected-findings ground truth, and the suspicious
-`win_update.ps1` script - was written by the participant as a realistic-but-fake
-incident package. Destinations use RFC-2606 `.example` domains and TEST-NET IP
-ranges, and the script's decoded payload is a literal `SYNTHETIC-DEMO-PAYLOAD`
-marker, so no real host, network, or code is touched. The unit test
-`test_no_real_internet_hosts_in_dataset` enforces this; the scenario-replay
-test `tests/scenario/test_replay.py` re-derives the findings from the dataset
-and asserts they match `expected_findings.json` (the demo is deterministic and
-tamper-evident). The agent itself still runs every step for real against this
-controlled data.
+AI coding assistants were used for implementation speed. The participant
+reviewed the project, understands the architecture and technical decisions,
+and can explain all submitted code.
 
 ## License
 
