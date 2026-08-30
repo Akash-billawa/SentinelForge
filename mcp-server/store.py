@@ -175,7 +175,15 @@ class ScenarioStore:
         return meta
 
     def lookup_ioc(self, indicator: str) -> dict[str, Any]:
-        norm = indicator.strip().lower()
+        raw = indicator.strip()
+        prefix, separator, value = raw.partition(":")
+        known_prefixes = {"ip", "domain", "hash", "sha256"}
+        if separator and prefix.lower() in known_prefixes and value.strip():
+            normalized_type = "sha256" if prefix.lower() == "hash" else prefix.lower()
+            norm = value.strip().lower()
+        else:
+            normalized_type = None
+            norm = raw.lower()
         for ioc in self.iocs().get("iocs", []):
             if ioc["value"].lower() == norm:
                 return {
@@ -183,8 +191,8 @@ class ScenarioStore:
                     "evidence_ref": f"ioc:{ioc['type']}:{ioc['value']}",
                 }
         return {
-            "type": "unknown",
-            "value": indicator,
+            "type": normalized_type or "unknown",
+            "value": value.strip() if normalized_type else raw,
             "verdict": "not_found",
             "category": None,
             "confidence": 0.0,
