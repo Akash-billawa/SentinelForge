@@ -86,6 +86,37 @@ def test_ioc_lookup_hit_and_miss():
     assert miss["confidence"] == 0.0
 
 
+def test_ioc_lookup_normalizes_supported_prefixes():
+    store = ScenarioStore()
+    assert store.lookup_ioc("ip:203.0.113.66")["type"] == "ip"
+    assert store.lookup_ioc("domain:metrics-telemetry-cdn.example")["type"] == "domain"
+    assert store.lookup_ioc("hash:b1946ac92492d2347c6235b4d2611184e0f3a1d2f4a5b6c7d8e9f00112233445")["type"] == "sha256"
+
+
+def test_ioc_lookup_preserves_bare_unknown_and_invalid_prefix():
+    store = ScenarioStore()
+    bare = store.lookup_ioc("198.51.100.99")
+    invalid = store.lookup_ioc("url:198.51.100.99")
+    assert bare["type"] == "unknown"
+    assert bare["value"] == "198.51.100.99"
+    assert invalid["type"] == "unknown"
+    assert invalid["value"] == "url:198.51.100.99"
+
+
+def test_add_iocs_deduplicates_normalized_values(tmp_path, monkeypatch):
+    import store as store_mod
+
+    monkeypatch.setattr(store_mod, "STATE_DIR", tmp_path / "state")
+    incident = store_mod.STORE.create("powershell_c2_beaconing")["incident_id"]
+    scenario = store_mod.ScenarioStore()
+    store_mod.STORE.add_iocs(
+        incident,
+        [scenario.lookup_ioc("ip:203.0.113.66"), scenario.lookup_ioc("203.0.113.66")],
+    )
+    assert len(store_mod.STORE.get(incident)["iocs"]) == 1
+    assert store_mod.STORE.get(incident)["iocs"][0]["type"] == "ip"
+
+
 def test_analyzer_verdict_and_decoding():
     sample = (SCENARIO / "suspicious_artifact.ps1").read_text(encoding="utf-8")
     result = analyze_powershell_text(sample, "sample.ps1")
