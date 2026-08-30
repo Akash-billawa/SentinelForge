@@ -44,10 +44,20 @@ export function buildCommanderSpec() {
   const specFile = JSON.parse(
     readFileSync(path.join(REPO_ROOT, "agent", "schemas", "agentspec.sentinelforge.json"), "utf8"),
   );
-  const instructions = readFileSync(
+  const commanderInstructions = readFileSync(
     path.join(REPO_ROOT, "agent", "prompts", "commander.md"),
     "utf8",
   );
+  // Keep specialist playbooks as editable source files while making them part
+  // of the actual runtime instructions. Previously these files were present
+  // in the repository but never reached the agent.
+  const specialistPlaybooks = ["log", "network", "malware"]
+    .map((role) => {
+      const file = path.join(REPO_ROOT, "agent", "prompts", `${role}_investigator.md`);
+      return readFileSync(file, "utf8");
+    })
+    .join("\n\n");
+  const instructions = `${commanderInstructions}\n\n## Specialist playbooks\n\n${specialistPlaybooks}`;
   const server = specFile.mcp_servers[0];
   return {
     model: { name: config.model, params: specFile.model.params },

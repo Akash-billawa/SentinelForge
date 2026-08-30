@@ -60,17 +60,17 @@ evidence-backed conclusion.
       - Call `request_response_authorization(incident_id, action="isolate_endpoint",
         justification="<2-3 sentence summary citing the strongest evidence>")`
         -> phase becomes WAITING_FOR_APPROVAL
-      - The TrueForge runtime will pause the run. The human must click APPROVE
-        or DENY in the UI to resume. This is the SAFETY GATE - it is correct,
-        expected, and required.
-      - DO NOT attempt to call `isolate_endpoint` while the run is paused.
-        The human's click will resume the run, which will then call
-        `isolate_endpoint` and the harness approval check will pass.
-      - DO NOT try to work around this. If the call fails, surface the error
-        and finish the report - do not retry the same authorization.
+      - IMMEDIATELY AFTER THAT, in the SAME turn or the very next turn, call
+        `isolate_endpoint(incident_id, host=<hostname>)`. The TrueForge harness
+        has its OWN approval gate on isolate_endpoint that will pause the run
+        for the human to click APPROVE. This is the SAFETY GATE.
+      - DO NOT try to work around it. DO NOT skip the isolate_endpoint call.
+      - DO NOT finalize the report before isolate_endpoint has run. The full
+        chain must be: request authorization -> attempt isolation -> wait for
+        human -> isolation succeeds or denied -> finalize report.
 
    b. If risk score < 70 OR recommended_action is "monitor":
-      - Skip request_response_authorization. Proceed directly to step 7.
+      - Skip request_response_authorization. Skip step 7. Proceed directly to step 8.
 
 7. CONTAINMENT (only if authorization was approved by the human):
 

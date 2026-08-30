@@ -6,7 +6,6 @@ Runs every test/static layer we have and prints a clean pass/fail report.
   python scripts/check.py
 """
 
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -30,7 +29,7 @@ def run(label: str, cmd: list[str], cwd: Path | None = None) -> tuple[bool, str]
     print(f"{C_DIM}$ {' '.join(cmd)}{C_RESET}")
     try:
         result = subprocess.run(
-            cmd, cwd=cwd or REPO_ROOT, capture_output=True, text=True, timeout=180,
+            cmd, cwd=cwd or REPO_ROOT, capture_output=True, text=True, timeout=180, check=False,
         )
     except FileNotFoundError as exc:
         print(f"{C_RED}  tool not found: {exc}{C_RESET}")
@@ -78,13 +77,11 @@ def main() -> int:
     else:
         # Run all --check invocations in one process for speed.
         all_ok = True
-        first_err = ""
         print(f"\n{C_BOLD}=== JS syntax (node --check) ==={C_RESET}")
         for t in js_targets:
-            r = subprocess.run([node, "--check", t], capture_output=True, text=True)
+            r = subprocess.run([node, "--check", t], capture_output=True, text=True, check=False)
             if r.returncode != 0:
                 all_ok = False
-                first_err = f"{t}: {r.stderr.strip() or r.stdout.strip()}"
                 print(f"{C_RED}  FAIL{C_RESET} {t}: {r.stderr.strip() or r.stdout.strip()}")
         if all_ok:
             print(f"{C_GREEN}  PASS{C_RESET}  {len(js_targets)} JS files clean")

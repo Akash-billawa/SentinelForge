@@ -645,7 +645,41 @@ button:focus-visible,
 /* =========================================================================
    §4.4 EVIDENCE — list of rows with hairline separators
    ========================================================================= */
-.ev-list { display: flex; flex-direction: column; }
+/* Keep evidence growth inside the panel. The header/count stays visible while
+   a long investigation can be inspected without pushing later sections down. */
+.agents > .card,
+.evidence > .card {
+  display: flex;
+  flex-direction: column;
+  height: 400px;
+  min-height: 0;
+}
+.ev-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+  max-height: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-right: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--hairline) transparent;
+}
+.ev-list::-webkit-scrollbar { width: 8px; }
+.ev-list::-webkit-scrollbar-track { background: transparent; }
+.ev-list::-webkit-scrollbar-thumb {
+  background: var(--hairline);
+  border-radius: 999px;
+}
+
+/* Keep the second row balanced as the approval message expands. */
+.decision > .card,
+.artifact > .card {
+  height: 320px;
+  min-height: 0;
+}
 .ev {
   display: grid; grid-template-columns: 16px 1fr auto; gap: 12px; align-items: center;
   padding: 10px 0;
@@ -985,7 +1019,7 @@ footer {
       <div class="hero-top">
         <div class="hero-id-block">
           <div class="hero-eyebrow">
-            <span>Active</span><span class="dot" aria-hidden="true"></span><span>Investigation</span>
+            <span id="incident-phase">Ready</span><span class="dot" aria-hidden="true"></span><span>Investigation</span>
           </div>
           <div class="hero-id">
             <span id="inc-id">—</span>
@@ -1238,13 +1272,14 @@ function fmtTime(t) { return (t || "").slice(11, 19) || nowHHMMSS(); }
 const state = {
   status: "IDLE",
   evidence: new Map(),
-  pendingTool: null,
+  pendingTools: new Map(),
   timelineFilter: "all",
   timelineCount: 0,
   agentsEngaged: 0,
   theme: localStorage.getItem("sf-theme") || "auto",
   sseBackoff: 2000,
   sseReconnectTimer: null,
+  renderedSeq: new Set(),
 };
 
 // =========================================================================
@@ -1308,12 +1343,29 @@ function setStatus(s) {
   const prev = chip.getAttribute("data-state");
   chip.textContent = CHIP_LABEL[s] || s || "IDLE";
   chip.setAttribute("data-state", s || "IDLE");
+  const phase = $("incident-phase");
+  if (phase) {
+    phase.textContent = ({
+      IDLE: "Ready",
+      INVESTIGATING: "Active",
+      RETRYING: "Retrying",
+      WAITING_FOR_APPROVAL: "Paused",
+      CLOSED: "Closed",
+      ERROR: "Error",
+    })[s] || "Active";
+  }
   // Brief pulse when the state actually changes — restrained, spring-based
   if (prev && prev !== (s || "IDLE")) {
     chip.classList.remove("flash");
     // force reflow so the animation can replay
     void chip.offsetWidth;
     chip.classList.add("flash");
+  }
+  const start = $("btn-start");
+  if (start) {
+    const active = ["INVESTIGATING", "RETRYING", "WAITING_FOR_APPROVAL"].includes(state.status);
+    start.disabled = active;
+    start.textContent = active ? "Investigation running…" : "Start investigation";
   }
 }
 
@@ -1628,7 +1680,8 @@ function tlRowHTML(evt, id) {
   } else if (evt.type === "approval_required") {
     body = `<span class="icon-warn">${escapeHtml(evt.text)}</span>`;
   } else if (evt.type === "decision") {
-    body = `<span class="${evt.level === 'ok' ? 'icon-ok' : 'icon-error'}">${escapeHtml(evt.text)}</span>`;
+    const decisionIcon = (evt.level === "approve" || evt.level === "ok") ? "icon-ok" : "icon-warn";
+    body = `<span class="${decisionIcon}">${escapeHtml(evt.text)}</span>`;
   } else if (evt.type === "agent_message") {
     body = escapeHtml(shorten(evt.text || "", 220));
   } else if (evt.type === "console" || evt.type === "harness") {
@@ -1637,7 +1690,8 @@ function tlRowHTML(evt, id) {
     return null;
   }
   const cat = tlCategoryForEvent(evt);
-  return `<div class="tl-row ${rowClass} no-result in-flight" data-id="${id}" data-cat="${cat}" data-evt="${escapeHtml(evt.type)}">
+  const pendingClass = evt.type === "tool_call" ? " no-result in-flight" : "";
+  return `<div class="tl-row ${rowClass}${pendingClass}" data-id="${id}" data-cat="${cat}" data-evt="${escapeHtml(evt.type)}">
     <span class="icon ${iconClass}" aria-hidden="true">·</span>
     <time>${escapeHtml(t)}</time>
     <span>${body}</span>
@@ -1650,6 +1704,10 @@ function tlAttachInFlight(pendingId, evt) {
 }
 
 function renderEvent(evt) {
+  if (evt?.seq != null) {
+    if (state.renderedSeq.has(evt.seq)) return;
+    state.renderedSeq.add(evt.seq);
+  }
   if (evt.type === "subagent_start") {
     for (const [key, label] of SPECIALISTS) {
       if ((evt.text || "").includes(label)) {
@@ -1673,8 +1731,11 @@ function renderEvent(evt) {
   } else if (evt.type === "approval_required") {
     setAgent("commander", "running", "awaiting approval");
   } else if (evt.type === "decision") {
-    const ok = evt.level === "ok";
-    setAgent("commander", ok ? "ok" : "err", ok ? "decision recorded" : "denied");
+    // MissionControl emits `approve` / `deny`. Neither decision means the
+    // Commander failed: approval continues containment; denial safely records
+    // the decision and continues to the final report.
+    const approved = evt.level === "approve" || evt.level === "ok";
+    setAgent("commander", "running", approved ? "executing containment" : "denied safely");
   }
 
   if (evt.type === "tool_result" && Array.isArray(evt.evidence)) {
@@ -1702,10 +1763,18 @@ function renderEvent(evt) {
   maybeRebalance();
   if (wasAtBottom) tl.scrollTop = tl.scrollHeight;
 
-  if (evt.type === "tool_call") state.pendingTool = { id, tool: evt.tool, args: evt.args };
-  else if (evt.type === "tool_result" && state.pendingTool) {
-    tlAttachInFlight(state.pendingTool.id, evt);
-    state.pendingTool = null;
+  if (evt.type === "tool_call") {
+    const key = evt.callId || `seq:${evt.seq ?? id}`;
+    state.pendingTools.set(key, { id, tool: evt.tool });
+  } else if (evt.type === "tool_result") {
+    const key = evt.toolCallId;
+    const pending = (key && state.pendingTools.get(key)) || state.pendingTools.values().next().value;
+    if (pending) {
+      tlAttachInFlight(pending.id, evt);
+      for (const [pendingKey, value] of state.pendingTools) {
+        if (value === pending) state.pendingTools.delete(pendingKey);
+      }
+    }
   }
 }
 function maybeRebalance() {
@@ -1755,7 +1824,39 @@ function clearTimeline() {
   const tl = $("timeline");
   if (tl) tl.innerHTML = "";
   state.timelineCount = 0;
-  state.pendingTool = null;
+  state.pendingTools.clear();
+}
+
+function resetRunView() {
+  state.evidence.clear();
+  $("evidence").innerHTML = `<div class="ev-empty" id="ev-empty">No indicators collected yet. Start the investigation to begin.</div>`;
+  $("ev-count").textContent = "0 indicators";
+  $("gauge-ev").textContent = "0";
+  $("gauge-tools").textContent = "0";
+  $("gauge-num").textContent = "0";
+  $("gauge-conf").textContent = "0%";
+  $("gauge-fill").style.width = "0%";
+  $("gauge-fill").setAttribute("data-band", "low");
+  $("why-chips").innerHTML = `<span class="empty">No risk drivers yet — start an investigation to begin.</span>`;
+  $("inc-id").textContent = "—";
+  $("inc-id").dataset.setOnce = "";
+  $("inc-sev").textContent = "Pending";
+  $("inc-sev").setAttribute("data-sev", "");
+  $("inc-host").textContent = "—";
+  $("inc-type").textContent = "—";
+  $("inc-received").textContent = "—";
+  $("risk-num").innerHTML = `0<small>/100</small>`;
+  $("risk-num").setAttribute("data-band", "low");
+  $("risk-conf").textContent = "0%";
+  $("risk-rec-action").textContent = "—";
+  $("response-state").textContent = "No action yet";
+  setArtifact(null);
+  const report = $("final-report-section");
+  if (report) report.hidden = true;
+  setPending(false, null, null);
+  resetAgents();
+  clearTimeline();
+  state.renderedSeq.clear();
 }
 
 // =========================================================================
@@ -1763,7 +1864,23 @@ function clearTimeline() {
 // =========================================================================
 function applySnapshot(snap) {
   if (!snap || typeof snap !== "object") return;
+  const hasStaleRunData = $("inc-id").textContent !== "—" || state.evidence.size > 0 || $("timeline").children.length > 0;
+  if (snap.status === "IDLE" && !snap.incidentId && (state.status !== "IDLE" || hasStaleRunData)) {
+    resetRunView();
+  }
   setStatus(snap.status);
+
+  // Reconcile history as well as live SSE. This covers a reload, a dropped
+  // SSE connection, and the short window between /api/start and EventSource.
+  if (Array.isArray(snap.events)) {
+    for (const evt of snap.events) renderEvent(evt);
+  }
+
+  // Backend status is authoritative after replaying history; this prevents a
+  // stale decision event from overwriting the final Commander state.
+  if (snap.status === "CLOSED") setAgent("commander", "ok", "complete");
+  else if (snap.status === "ERROR") setAgent("commander", "err", "failed");
+  else if (snap.status === "WAITING_FOR_APPROVAL") setAgent("commander", "running", "awaiting approval");
 
   if (snap.incidentId && !$("inc-id").dataset.setOnce) {
     $("inc-id").textContent = snap.incidentId;
@@ -1897,6 +2014,7 @@ $("btn-start").addEventListener("click", async () => {
   const fr = $("final-report-section"); if (fr) fr.hidden = true;
   resetAgents();
   clearTimeline();
+  state.renderedSeq.clear();
   const tl = $("timeline"); if (tl) tl.scrollTop = 0;            // B25
   setStatus("INVESTIGATING");
   setAgent("commander", "running", "starting");
@@ -1911,7 +2029,6 @@ $("btn-start").addEventListener("click", async () => {
     return;
   }
   setTimeout(refresh, 400);
-  setTimeout(() => { $("btn-start").disabled = false; }, 5000);
 });
 
 async function postDecision(url) {

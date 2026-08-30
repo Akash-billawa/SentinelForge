@@ -35,9 +35,6 @@ CATEGORY_SIGNAL = {
     "suspicious_artifact": "suspicious_artifact",
 }
 
-VALID_CATEGORIES = sorted(CATEGORY_SIGNAL)
-
-
 def parse_timestamp(ts: str) -> datetime:
     """Parse an ISO-8601 timestamp (Python 3.11+ accepts the trailing 'Z')."""
     return datetime.fromisoformat(ts)
@@ -54,6 +51,12 @@ def gap_seconds(flows: list[dict]) -> list[int]:
         int((parse_timestamp(b["timestamp"]) - parse_timestamp(a["timestamp"])).total_seconds())
         for a, b in pairwise(flows)
     ]
+
+
+# Backward-compatible names retained for older local regression tests and
+# scripts. The MCP surface continues to expose only the documented tools.
+_parse_timestamp = parse_timestamp
+_gap_seconds = gap_seconds
 
 
 @mcp.tool()

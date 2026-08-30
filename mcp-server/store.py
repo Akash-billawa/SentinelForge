@@ -28,6 +28,9 @@ _REPO_ROOT = Path(
 STATE_DIR = Path(os.environ.get("SENTINELFORGE_STATE_DIR") or (_REPO_ROOT / "state"))
 SCENARIOS_DIR = _REPO_ROOT / "scenarios"
 
+INCIDENTS_DIR_NAME = "incidents"
+AUDIT_DIR_NAME = "audit"
+
 _INCIDENT_ID_RE = re.compile(r"^INC-\d{4}-\d{4,6}$")
 
 
@@ -287,8 +290,20 @@ class IncidentStore:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
+        self._ensure_state_layout()
+
+    @staticmethod
+    def _ensure_state_layout() -> None:
+        """Create every runtime-state directory required by this store.
+
+        The state directory is configurable and tests can replace ``STATE_DIR``
+        after ``STORE`` has been imported.  Keeping this at call time makes
+        every operation safe on a clean checkout and with a newly selected
+        state directory.
+        """
         STATE_DIR.mkdir(parents=True, exist_ok=True)
-        (STATE_DIR / "incidents").mkdir(parents=True, exist_ok=True)
+        (STATE_DIR / INCIDENTS_DIR_NAME).mkdir(parents=True, exist_ok=True)
+        (STATE_DIR / AUDIT_DIR_NAME).mkdir(parents=True, exist_ok=True)
 
     # NOTE: paths resolve STATE_DIR at call time so tests can isolate via
     # monkeypatch.setattr(store, "STATE_DIR", tmp).
@@ -300,14 +315,21 @@ class IncidentStore:
             raise SentinelForgeError(
                 f"invalid incident id {incident_id!r}; expected INC-YYYY-NNNN"
             )
-        path = STATE_DIR / "incidents" / f"{incident_id}.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
+        IncidentStore._ensure_state_layout()
+        path = STATE_DIR / INCIDENTS_DIR_NAME / f"{incident_id}.json"
         return path
 
     @staticmethod
     def _audit_path(incident_id: str) -> Path:
-        STATE_DIR.mkdir(parents=True, exist_ok=True)
-        return STATE_DIR / "audit" / f"{incident_id}.jsonl"
+        IncidentStore._ensure_state_layout()
+        return STATE_DIR / AUDIT_DIR_NAME / f"{incident_id}.jsonl"
+
+    @staticmethod
+    def _write_json(path: Path, record: dict[str, Any]) -> None:
+        """Persist one record without leaving a partially-written JSON file."""
+        tmp_path = path.with_name(f".{path.name}.tmp")
+        tmp_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+        tmp_path.replace(path)
 
     # -- CRUD -------------------------------------------------------------
     def create(self, scenario: str, incident_id: str | None = None) -> dict[str, Any]:
@@ -334,7 +356,7 @@ class IncidentStore:
                 "response_state": "NONE",
                 "final_report": None,
             }
-            path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+            self._write_json(path, record)
             self.audit(incident_id, "INCIDENT_CREATED", {"scenario": scenario})
             return record
 
@@ -363,9 +385,7 @@ class IncidentStore:
             record = self.get(incident_id)
             mutate(record)
             record["updated_at"] = utc_now()
-            self._path(incident_id).write_text(
-                json.dumps(record, indent=2), encoding="utf-8"
-            )
+            self._write_json(self._path(incident_id), record)
             return record
 
     def transition(self, incident_id: str, target_phase: str) -> dict[str, Any]:
@@ -460,7 +480,7 @@ class IncidentStore:
                 )
             if rec["current_phase"] == "EVIDENCE_READY":
                 raise InvalidTransition(
-                    f"phase is EVIDENCE_READY; call correlate_evidence first to "
+                    "phase is EVIDENCE_READY; call correlate_evidence first to "
                     "transition to ASSESSMENT_READY"
                 )
             # ASSESSMENT_READY is the expected state; re-setting is idempotent.

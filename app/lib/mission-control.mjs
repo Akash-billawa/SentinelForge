@@ -17,8 +17,6 @@ import {
   ensureMcpServerRegistered,
 } from "./config.mjs";
 
-const EVENTS_LOG = path.join(REPO_ROOT, "state", "ui-events.jsonl");
-
 /**
  * Derive the compact judge-facing report fields (headline, verdict_line,
  * top_findings, host, account, c2, beacon, persistence, evidence) from the
@@ -212,6 +210,8 @@ export class MissionControl {
   #runSeq = 0;
   /** id -> last non-delta event per stream; lets handlers resolve approvals. */
   #eventsIndex = new Map();
+  /** tool-call id -> normalized call metadata across turns. */
+  #toolCalls = new Map();
 
   constructor({ logPath = null } = {}) {
     this.logPath = logPath;
@@ -260,6 +260,11 @@ export class MissionControl {
   }
 
   snapshot() {
+    const toolEvents = this.events.filter((event) => event.type === "tool_call");
+    const toolResults = this.events.filter((event) => event.type === "tool_result");
+    const evidenceCount = new Set(
+      this.events.flatMap((event) => Array.isArray(event.evidence) ? event.evidence : []),
+    ).size;
     return {
       status: this.status,
       sessionId: this.sessionId,
@@ -267,6 +272,12 @@ export class MissionControl {
       pendingApproval: this.pendingApproval,
       finalReport: this.finalReport,
       events: this.events,
+      // Some TrueForge/provider combinations omit the assistant's persisted
+      // model.message tool_calls but still emit tool.response. Count those
+      // results too so the console never reports zero tools after real MCP
+      // activity.
+      toolCount: Math.max(toolEvents.length, toolResults.length),
+      evidenceCount,
     };
   }
 
@@ -276,10 +287,16 @@ export class MissionControl {
       let name = "unknown";
       let rawArgs = null;
       const msg = this.#eventsIndex.get(ref.sourceEventId);
-      const call = msg?.toolCalls?.find((tc) => tc.id === ref.id);
+      const call = (msg?.toolCalls ?? msg?.tool_calls ?? msg?.message?.toolCalls ?? msg?.message?.tool_calls ?? [])
+        .find((tc) => tc.id === ref.id);
       if (call) {
-        name = call.toolInfo?.name ?? call.function?.name ?? name;
-        rawArgs = call.function?.arguments;
+        name = call.toolInfo?.name ?? call.function?.name ?? call.name ?? name;
+        rawArgs = call.function?.arguments ?? call.arguments;
+      }
+      const remembered = this.#toolCalls.get(ref.id);
+      if (remembered) {
+        name = remembered.name || name;
+        rawArgs = remembered.args ?? rawArgs;
       }
       if (name === "unknown") {
         // Live streams carry tool calls as delta fragments merged in #msgAcc.
@@ -329,6 +346,7 @@ export class MissionControl {
     this.finalReport = null;
     this.riskAssessment = null;
     this.#msgAcc.clear();
+    this.#toolCalls.clear();
     this.#turnErrorMessage = null;
     this.#emit({ type: "console", level: "info", text: "Console reset - ready for a new investigation." });
   }
@@ -490,10 +508,13 @@ export class MissionControl {
           /* partial args - show what we have as raw */
           args = { _raw: call.args?.slice(0, 200) };
         }
+        const tool = call.name ?? "unknown";
+        if (call.id) this.#toolCalls.set(call.id, { name: tool, args: args });
         this.#emit({
           type: "tool_call",
-          text: call.name ?? "unknown",
-          tool: call.name,
+          text: tool,
+          tool,
+          callId: call.id,
           args,
           level: String(call.name ?? "").includes("isolate") ? "danger" : "info",
         });
@@ -534,7 +555,7 @@ export class MissionControl {
         // tool-call chunks (by array index) so tool names/args are visible.
         const acc = this.#msgAcc.get(event.id) ?? { content: "", calls: [], flushed: false };
         if (typeof event.content === "string" && event.content) acc.content += event.content;
-        (event.toolCalls ?? []).forEach((frag, i) => {
+        (event.toolCalls ?? event.tool_calls ?? event.message?.toolCalls ?? event.message?.tool_calls ?? []).forEach((frag, i) => {
           const slot = (acc.calls[i] ??= { id: null, name: null, args: "" });
           if (!slot.id && frag?.id) slot.id = frag.id;
           const name = frag?.function?.name ?? frag?.toolInfo?.name;
@@ -545,22 +566,26 @@ export class MissionControl {
         break;
       }
       case "model.message": {
-        const content = typeof event.content === "string" ? event.content : "";
-        const calls = event.toolCalls ?? [];
+        const rawContent = event.content ?? event.message?.content;
+        const content = typeof rawContent === "string" ? rawContent : "";
+        const calls = event.toolCalls ?? event.tool_calls ?? event.message?.toolCalls ?? event.message?.tool_calls ?? [];
         for (const call of calls) {
           let args = {};
           try {
-            args = JSON.parse(call.function?.arguments || "{}");
+            args = JSON.parse(call.function?.arguments ?? call.arguments ?? "{}");
           } catch {
             /* keep empty */
           }
+          const tool = call.toolInfo?.name ?? call.function?.name ?? call.name ?? "?";
+          if (call.id) this.#toolCalls.set(call.id, { name: tool, args });
           this.#emit({
             type: "tool_call",
             threadId: event.threadId,
-            text: `${call.function?.name ?? "?"}`,
-            tool: call.function?.name,
+            text: tool,
+            tool,
+            callId: call.id,
             args,
-            level: args && String(call.function?.name).includes("isolate") ? "danger" : "info",
+          level: String(tool).includes("isolate") ? "danger" : "info",
           });
         }
         if (content.trim()) {
@@ -572,7 +597,7 @@ export class MissionControl {
         let evidence = [];
         let parsed = null;
         try {
-          parsed = JSON.parse(event.content ?? "null");
+          parsed = typeof event.content === "string" ? JSON.parse(event.content) : event.content;
         } catch {
           /* non-JSON payload */
         }
@@ -586,6 +611,7 @@ export class MissionControl {
         this.#emit({
           type: "tool_result",
           threadId: event.threadId,
+          toolCallId: event.toolCallId ?? event.tool_call_id,
           text: evidence.length ? `evidence: ${evidence.slice(0, 6).join(", ")}` : "result received",
           evidence,
           preview: truncate(event.content ?? "", 240),
