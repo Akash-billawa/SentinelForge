@@ -19,8 +19,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { MissionControl } from "./lib/mission-control.mjs";
-import { McpHttpClient } from "./lib/mcp-client.mjs";
-import { AutoDemo } from "./lib/auto-demo.mjs";
 import { config, REPO_ROOT } from "./lib/config.mjs";
 
 const APP_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -28,7 +26,7 @@ const PUBLIC_DIR = path.join(APP_DIR, "public");
 
 // ---------------------------------------------------------------------------
 // Stack supervisor: serve-ui owns the other two services. One command boots
-// the whole demo stack, and a watchdog respawns anything that dies. This also
+// the application stack, and a watchdog respawns anything that dies. This also
 // makes children survive shell exits on Windows (serve-ui outlives shells).
 // ---------------------------------------------------------------------------
 
@@ -161,20 +159,6 @@ const server = http.createServer(async (req, res) => {
     // Reuse the SAME MissionControl instance so existing SSE subscribers keep
     // receiving events across runs (a fresh instance would orphan them).
     mc.reset();
-    // Deterministic replay: wipe any prior incident/endpoint state for this
-    // scenario so every START begins from a clean incident (a stale DENIED or
-    // CLOSED session would change the agent's behaviour mid-demo).
-    try {
-      const alert = JSON.parse(
-        readFileSync(path.join(REPO_ROOT, "scenarios", config.scenario, "alert.json"), "utf8"),
-      );
-      const mcp = new McpHttpClient(config.mcpUrl);
-      await mcp.init();
-      await mcp.call("reset_demo", { incident_id: alert.incident_id, host: alert.hostname });
-      console.log(`[serve-ui] demo state reset for ${alert.incident_id}`);
-    } catch (err) {
-      console.error("[serve-ui] pre-start reset failed:", String(err.message ?? err));
-    }
     mc.start().catch((err) => mc.recordStartupError(String(err.message ?? err)));
     return json(res, 202, { started: true, note: "stream /api/events for progress" });
   }
@@ -188,12 +172,6 @@ const server = http.createServer(async (req, res) => {
     return json(res, 202, { resumed: true });
   }
 
-  if (req.method === "POST" && url.pathname === "/api/auto-demo") {
-    const body = await readBody(req);
-    if (!body.apiKey) return json(res, 400, { error: "apiKey required" });
-    const r = AutoDemo.start(String(body.apiKey));
-    return json(res, r.started ? 202 : 409, r);
-  }
 
   if (req.method === "POST" && url.pathname === "/api/approve") {
     try {
@@ -224,7 +202,7 @@ const server = http.createServer(async (req, res) => {
   }
   const ext = path.extname(abs);
   const mime = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml" }[ext] ?? "application/octet-stream";
-  // no-store: the console JS evolves between demo runs; a cached stale page
+  // no-store: the console JS evolves between investigation runs; a cached stale page
   // renders nonsense (this bit us during testing).
   res.writeHead(200, { "content-type": mime, "cache-control": "no-store" });
   res.end(readFileSync(abs));

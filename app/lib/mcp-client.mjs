@@ -1,6 +1,6 @@
 /**
  * Minimal MCP streamable-http client (JSON-RPC over POST /mcp).
- * Used by the incident console to read demo state directly from the
+ * Used by the incident console to read investigation state directly from the
  * SentinelForge MCP server - no LLM involved.
  */
 

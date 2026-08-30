@@ -235,7 +235,7 @@ export class MissionControl {
         mkdirSync(path.dirname(this.logPath), { recursive: true });
         writeFileSync(this.logPath, JSON.stringify(record) + "\n", { flag: "a" });
       } catch {
-        /* logging must never break the demo */
+        /* logging must never break an investigation */
       }
     }
     for (const fn of this.subscribers) {
@@ -628,7 +628,7 @@ export class MissionControl {
         }
         // finalize_incident_report returns the report FLAT (no wrapper key).
         // Only looking for parsed.final_report meant the run never reached
-        // CLOSED, so the CLI and auto-demo waited forever for a finished run.
+        // CLOSED, so the console waited forever for a finished run.
         const report = parsed?.final_report ?? (isFinalReport(parsed) ? parsed : null);
         if (report) {
           this.finalReport = backfillCompactReport(report);

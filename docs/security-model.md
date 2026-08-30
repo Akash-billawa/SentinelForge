@@ -2,7 +2,7 @@
 
 ## Threat model for this project
 
-SentinelForge itself must not become a risk. The demo proves an agent control
+SentinelForge itself must not become a risk. The application enforces an agent control
 loop; it must never touch real systems, real data, or execute untrusted code.
 
 ## Data guarantees
