@@ -135,21 +135,6 @@ TrueForge locally, applies the one-line `pathToFileURL()` fix to the bundled
 kysely copy (idempotent, correct on all platforms), and starts the server.
 Alternatives: WSL or Docker Compose from the upstream repository.
 
-## Troubleshooting (model provider)
-
-The console runs a preflight check before every investigation and fails fast
-with actionable guidance if the provider/model is misconfigured.
-
-- **Gemini free tier**: pro models have ZERO quota (`limit: 0`) - use
-  `google-gemini/gemini-3-6-flash`. Note TrueForge exposes Google models under
-  the `google-gemini/` prefix with dash-form names; copy the exact id from the
-  preflight error message into `.env`:
-  `SENTINELFORGE_MODEL=google-gemini/gemini-3-6-flash`
-- **No providers configured**: open `http://localhost:8790` -> Settings ->
-  Models and add a provider key first.
-- A 429 mid-run is surfaced in the timeline with a targeted hint instead of a
-  raw stack trace.
-
 ## Disclosure
 
 Built during The Agent Harness Hackathon. AI coding assistants were
