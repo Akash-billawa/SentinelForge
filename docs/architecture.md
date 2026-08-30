@@ -23,7 +23,7 @@
 
 ## Request lifecycle
 
-1. `serve-ui.mjs` / `run-demo.mjs` create a TrueForge session with the inline
+1. `serve-ui.mjs` creates a TrueForge session with the inline
    SOC Commander AgentSpec (`agent/schemas/agentspec.sentinelforge.json`).
 2. Kickoff turn: "load the alert for scenario X and investigate". The prompt
    contains no answers - discovery happens via tools.
