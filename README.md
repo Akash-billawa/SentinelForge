@@ -1,6 +1,6 @@
 # SentinelForge
 
-**AI SOC Incident Commander built on TrueForge.**
+**AI SOC Incident Commander for safe, evidence-driven response.**
 *Investigate autonomously. Act only with permission.*
 
 SentinelForge receives a security alert, opens an incident session, and
@@ -8,12 +8,12 @@ delegates the investigation to specialist subagents (Log, Network, Malware).
 They collect evidence through real MCP tool calls against a deterministic
 synthetic dataset, a sandboxed static analyzer decodes the suspicious
 artifact, the Commander fuses and cross-checks findings, produces transparent
-risk scoring — and then **stops**. Endpoint isolation is consequential, so
-TrueForge pauses the run at a human approval checkpoint. Only APPROVE lets the
-controlled containment execute; DENY closes the loop with no action taken.
+risk scoring — and then **stops**. Endpoint isolation is consequential, so the
+agent pauses at a human approval checkpoint. Only APPROVE lets the controlled
+containment execute; DENY closes the loop with no action taken.
 
 ```text
-Security Alert → TrueForge Agent → Autonomous Investigation
+Security Alert → SentinelForge Agent → Autonomous Investigation
       ↓ Subagents + MCP Tools + Sandbox
 Evidence Correlation → Risk / Confidence
       ↓
@@ -34,40 +34,6 @@ SentinelForge demonstrates the two-sided answer:
 
 > Investigation can be autonomous. Irreversible response remains human-controlled.
 
-## Why is an agent needed?
-
-The work is inherently multi-step and multi-source: no single tool call yields
-the verdict. Evidence must be collected in parallel by specialists, correlated,
-scored, and explained. That orchestration — deciding what to ask, of whom, in
-what order, and when to stop — is exactly what an agent harness provides.
-
-## Why TrueForge?
-
-TrueForge is not decoration here; it *is* the runtime:
-
-- **Agent execution loop** - the SOC Commander runs as a TrueForge agent
-  (`model` + `instructions` + `config.iteration_limit`).
-- **MCP tools** - every piece of security data flows through our MCP server
-  (`mcp_servers[].url`), attached to the agent by name.
-- **Human checkpoints** - the approval pause is TrueForge's native
-  `require_approval_for_tools: ["isolate_endpoint"]`. The harness halts the
-  turn; the operator's decision resumes it as a new turn.
-- **Subagents** - Log / Network / Malware investigators are TrueForge
-  subagent threads (`thread.created` / `thread.done` events).
-- **Session state** - one incident = one session; context persists across turns.
-- **Provider flexibility** - the model is a config value
-  (`SENTINELFORGE_MODEL`), switchable without code changes.
-
-## Which TrueForge features are used?
-
-| Capability | Where |
-|---|---|
-| MCP tool connections | `app/lib/config.mjs` AgentSpec -> sentinelforge-security server |
-| Model/agent execution | inline AgentSpec, `agent/prompts/commander.md` |
-| Human approval | `require_approval_for_tools`, handled in `app/lib/mission-control.mjs` |
-| Subagents | Commander delegates specialists per `agent/prompts/*.md` |
-| Sessions | one session per incident via SDK `sessions.create` |
-
 ## Architecture
 
 See [docs/architecture.md](docs/architecture.md). Short version:
@@ -79,7 +45,7 @@ sentinelforge/
 ├── sandbox/       Static PowerShell analyzer (never executes samples)
 ├── scenarios/     Deterministic synthetic incident package
 ├── agent/         Commander prompt, specialist prompts, policy, JSON schemas
-├── app/           Mission control: TrueForge SDK driver + web console
+├── app/           Mission control: agent driver + web console
 └── tests/         Unit / integration (real MCP over HTTP) / scenario replay
 ```
 
@@ -97,7 +63,7 @@ python -m venv .venv
 .\.venv\Scripts\python mcp-server\server.py
 #   -> http://127.0.0.1:8765/mcp
 
-# 3. TrueForge (terminal 2) - works on Windows, macOS and Linux
+# 3. Start the agent runtime (terminal 2) - works on Windows, macOS and Linux
 node scripts\run-trueforge.mjs        # node scripts/run-trueforge.mjs on *nix
 #   -> http://localhost:8790
 # In Settings -> Models add your provider/API key.
@@ -114,8 +80,8 @@ cd app && node serve-ui.mjs   # open http://localhost:8090, click START INVESTIG
 1. Start the three processes above.
 2. Web console: click **START INVESTIGATION**. Watch subagents spawn, MCP tool
    calls stream, evidence refs accumulate.
-3. At `Risk >= 70` the Commander recommends isolation; TrueForge pauses and the
-   console shows the checkpoint. Click **APPROVE** (mock endpoint becomes
+3. At `Risk >= 70` the Commander recommends isolation; the runtime pauses and
+   the console shows the checkpoint. Click **APPROVE** (mock endpoint becomes
    ISOLATED, report finalizes) or **DENY** (no action, decision recorded).
 4. Reset & replay anytime: `reset_demo` tool or restart the console.
 
@@ -127,7 +93,7 @@ CLI equivalent: `node run-demo.mjs` prompts at the checkpoint;
 Four independent layers (details: [docs/security-model.md](docs/security-model.md)):
 
 1. Prompt-level decision policy (`agent/policies/decision_policy.md`).
-2. TrueForge human checkpoint on the single consequential tool.
+2. Runtime-enforced human checkpoint on the single consequential tool.
 3. Application guard: the MCP tool refuses isolation unless the incident shows
    a raised authorization request approved by the checkpoint.
 4. Demo-safety: all data synthetic (RFC-2606 `.example` domains, TEST-NET IPs),
@@ -186,7 +152,7 @@ with actionable guidance if the provider/model is misconfigured.
 
 ## Disclosure
 
-Built during The Agent Harness Hackathon (TrueForge). AI coding assistants were
+Built during The Agent Harness Hackathon. AI coding assistants were
 used for implementation speed; the participant reviewed, understands, and can
 explain all submitted code.
 
