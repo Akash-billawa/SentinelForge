@@ -105,15 +105,14 @@ python -m venv .venv
 # Terminal 2: start the TrueForge agent runtime
 node scripts\\run-trueforge.mjs
 
-# Terminal 3: run the CLI demo
+# Terminal 3: start the SentinelForge web console
 cd app
 npm install
 npm install @truefoundry/trueforge-sdk
-node run-demo.mjs --approve
+node serve-ui.mjs
 ```
 
-For the web console, run `node serve-ui.mjs` from `app` and open
-`http://localhost:8090`. At the approval checkpoint, choose **APPROVE** to
+Open `http://localhost:8090`. At the approval checkpoint, choose **APPROVE** to
 contain the mock endpoint or **DENY** to close the incident without action.
 
 ## Tests
@@ -140,11 +139,6 @@ The hackathon requires a representative merged pull request with the Qodo
 review, decisions, remediation, and follow-up review. The repository's review
 history is available at [GitHub Pull Requests](https://github.com/Akash-billawa/SentinelForge/pulls).
 Add the final representative merged PR link here before submission.
-
-## Demo
-
-The recommended three-minute flow is documented in
-[docs/demo-script.md](docs/demo-script.md).
 
 ## Safety and limitations
 
